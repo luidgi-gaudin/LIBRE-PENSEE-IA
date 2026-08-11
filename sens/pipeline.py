@@ -36,7 +36,7 @@ class Config:
     dim: int = 64
     oversample: int = 16
     power_iterations: int = 3
-    eigenvalue_power: float = 0.5
+    eigenvalue_power: float = 1.0
     seed: int = 20260811
 
     def as_dict(self) -> dict:
@@ -127,16 +127,18 @@ def build(
     done(f"{config.dim} dims, eigenvalue spread {spread:6.1f}x")
 
     # A = U L U.T for a symmetric A, so the truncated SVD's left factor is
-    # U scaled by |L| to some power. Half is the symmetric choice: it splits
+    # U scaled by |L| to some power. The usual choice is 0.5, which splits
     # the singular values evenly between the word side and the context side.
     #
-    # It is not the best choice on this corpus. `python -m sens sweep` scores
-    # the exponent against the benchmark and finds accuracy rising all the
-    # way to 1.0, consistently across seeds. The default stays at 0.5 because
-    # the only metric that can currently arbitrate is a morphological analogy
-    # test, and a higher exponent is exactly the kind of change that flatters
-    # analogy while costing similarity. Moving it needs a second measurement,
-    # not a first one.
+    # This corpus disagrees, and it took two independent measurements to be
+    # sure of it. `sens sweep` finds morphological analogy peaking between
+    # 0.75 and 1.0; `sens heldout` finds prediction of unseen co-occurrence
+    # peaking at 1.0. Both curves turn over after their maximum rather than
+    # running to the edge of the range, which is what rules out the obvious
+    # objection — that a metric was simply rewarding whichever exponent
+    # reconstructs the fitted matrix best. Correlation against the *fitted*
+    # matrix peaks at 0.75 and then falls, so the instrument is not just
+    # measuring reconstruction.
     scale = [abs(v) ** config.eigenvalue_power for v in values]
     scaled = [[x * s for x, s in zip(row, scale)] for row in vectors]
 

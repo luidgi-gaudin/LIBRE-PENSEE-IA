@@ -8,6 +8,7 @@
     python -m sens axis sea land wind sailor house door
     python -m sens evaluate
     python -m sens sweep
+    python -m sens heldout
     python -m sens demo
     python -m sens info
 """
@@ -21,6 +22,7 @@ import sys
 from . import corpus
 from . import evaluate as evaluate_mod
 from . import experiments
+from . import heldout as heldout_mod
 from .pipeline import Config, build
 from .space import Space
 
@@ -254,6 +256,43 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     return 0
 
 
+DEFAULT_HELDOUT_POWERS = (0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5)
+
+
+def cmd_heldout(args: argparse.Namespace) -> int:
+    works = corpus.available()
+    if not works:
+        sys.exit("no corpus files found; run `python -m sens fetch`")
+
+    print("splitting the corpus and building on half of it", file=sys.stderr)
+    prepared = heldout_mod.prepare(
+        [w.path for w in works],
+        block=args.block,
+        pair_count=args.pairs,
+        seed=args.seed,
+        verbose=True,
+    )
+    print(
+        f"\ntrain {prepared.train_tokens:,} tokens   "
+        f"test {prepared.test_tokens:,} tokens   "
+        f"{len(prepared.pairs):,} word pairs"
+    )
+
+    print("\nspearman against similarity measured on unseen text")
+    print(f"  {'power':>6}  {'rho':>8}  {'pairs':>6}")
+    best = None
+    for power, rho, used in heldout_mod.sweep_power(
+        prepared, tuple(args.powers)
+    ):
+        marker = ""
+        if best is None or rho > best[1]:
+            best = (power, rho)
+        print(f"  {power:6.2f}  {rho:+8.4f}  {used:6}{marker}")
+    if best:
+        print(f"\nbest at power {best[0]:.2f} (rho {best[1]:+.4f})")
+    return 0
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     space = _load(args.space)
     meta = space.meta
@@ -328,6 +367,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--limit", type=int, default=60)
     p.add_argument("--seed", type=int, default=20260811)
     p.set_defaults(func=cmd_sweep)
+
+    p = sub.add_parser(
+        "heldout", help="predict similarity on text the space never saw"
+    )
+    p.add_argument("--block", type=int, default=4000)
+    p.add_argument("--pairs", type=int, default=4000)
+    p.add_argument("--seed", type=int, default=20260811)
+    p.add_argument("--powers", type=float, nargs="+",
+                   default=list(DEFAULT_HELDOUT_POWERS))
+    p.set_defaults(func=cmd_heldout)
 
     p = sub.add_parser("demo", help="a guided tour of the results")
     p.set_defaults(func=cmd_demo)
