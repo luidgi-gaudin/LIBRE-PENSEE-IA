@@ -7,9 +7,9 @@ lands on `her`, and where the line from `sea` to `land` sorts `harpoon` from
 
 Pure Python. No NumPy, no SciPy, no dependencies of any kind. Every
 multiply-add is a Python float operation you could step through in a
-debugger. 525 lines implement the method — the rest of the 959 is a command
-line, a corpus fetcher and an evaluation harness. 148 tests. 42 seconds end
-to end.
+debugger. 525 lines implement the method; the rest is a command line, a
+corpus fetcher, an evaluation harness and the experiments that test the
+pipeline's own settings. 174 tests. 42 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -182,6 +182,60 @@ is 1.7% — the floor — because `-er` is two relations wearing one suffix
 cannot encode a direction that points two ways at once. A metric that scored
 everything highly would be measuring itself.
 
+## Testing the pipeline's own choices
+
+Two settings had been made by citation rather than measurement. Now that a
+benchmark exists, `python -m sens sweep` checks them. Both experiments reuse
+one factorisation — the exponent is applied after the eigendecomposition and
+an ablation only drops columns — so each setting costs one evaluation rather
+than one rebuild.
+
+**The eigenvalue exponent was wrong, and I have left it wrong on purpose.**
+
+```
+configuration          dims    top1    top5    form
+power 0.00               64    3.1%    7.6%   16.7%
+power 0.25               64    3.8%   10.2%   16.2%
+power 0.50               64    4.3%   11.2%   17.9%     <- the default
+power 0.75               64    4.8%   13.1%   18.1%
+power 1.00               64    4.8%   14.0%   22.9%
+```
+
+Accuracy climbs all the way to 1.0. It is not a seed artifact — across three
+seeds, 0.0 is always worst and 0.5 is never the winner. Neighbour lists and
+the `sea`/`land` axis are unchanged at 1.0, so nothing visibly breaks.
+
+The default is still 0.5. Not out of caution: a higher exponent emphasises
+the dominant directions, which is exactly the change you would expect to
+flatter a global linear structure like analogy while costing local structure
+like similarity. I can measure the first and not the second. Tuning a default
+against the only metric I happen to own, in the direction that metric is
+biased toward, would be overfitting with extra steps. Moving it needs a
+second measurement, which is the next thing to build.
+
+**The negative eigenvalues earn their place.** This one confirmed the design
+rather than upsetting it, and it is dimension-matched so that it means
+something — comparing a 49-axis space against a 64-axis one would measure
+dimensionality, not sign.
+
+```
+configuration          dims    top1    top5    form
+top 49 by |lambda|       49    4.3%   12.4%   16.9%
+positive only (49)       49    1.9%    7.4%    7.6%
+negative only (15)       15    0.5%    1.4%   12.9%
+all 64                   64    4.3%   11.2%   17.9%
+```
+
+Same number of axes, more than double the accuracy, purely from letting 15
+negative-eigenvalue directions in. Ranking by `|λ|` was justified earlier in
+this README on the theoretical grounds that it is what makes a truncated SVD
+a truncated SVD; it turns out to be worth a factor of two in practice.
+
+The last row is the strangest. Those 15 negative directions, alone, score
+almost nothing on accuracy — 0.5% — while reaching a 12.9% form rate, higher
+than all 49 positive directions together manage. Whatever they encode is
+closer to *what kind of word this is* than to *which word this is*.
+
 ## What doesn't work
 
 Analogies are the famous demo and they are the weakest thing here.
@@ -244,6 +298,7 @@ python -m sens build                    # all six, ~42s
 python -m sens demo
 python -m sens evaluate                 # score it on a generated benchmark
 python -m sens evaluate --misses 5      # ...and see what it says instead
+python -m sens sweep                    # test the pipeline's free parameters
 python -m sens neighbors whale ship happiness
 python -m sens analogy father mother son
 python -m sens similarity ship boat garden
@@ -273,10 +328,11 @@ sens/weight.py     PPMI
 sens/linalg.py     sparse matvec, CholeskyQR, Jacobi, randomised range finder
 sens/space.py      cosine, neighbours, analogy (3CosAdd + 3CosMul), axis
 sens/evaluate.py   a benchmark generated from the vocabulary itself
+sens/experiments.py  exponent sweep and dimension-matched sign ablation
 sens/pipeline.py   the five stages, end to end
 sens/corpus.py     which books, and fetching them
 sens/__main__.py   the CLI
-tests/             148 tests
+tests/             174 tests
 ```
 
 ```bash

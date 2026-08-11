@@ -7,6 +7,7 @@
     python -m sens similarity ship sea
     python -m sens axis sea land wind sailor house door
     python -m sens evaluate
+    python -m sens sweep
     python -m sens demo
     python -m sens info
 """
@@ -19,6 +20,7 @@ import sys
 
 from . import corpus
 from . import evaluate as evaluate_mod
+from . import experiments
 from .pipeline import Config, build
 from .space import Space
 
@@ -229,6 +231,29 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sweep(args: argparse.Namespace) -> int:
+    space = _load(args.space)
+
+    print("eigenvalue exponent")
+    print("  " + experiments.header())
+    for result in experiments.sweep_power(
+        space, method=args.method, limit=args.limit, seed=args.seed
+    ):
+        print("  " + result.row)
+
+    ablation = experiments.ablate_signs(
+        space, method=args.method, limit=args.limit, seed=args.seed
+    )
+    if ablation:
+        print("\nsign ablation (dimension-matched)")
+        print("  " + experiments.header())
+        for result in ablation:
+            print("  " + result.row)
+    else:
+        print("\nno negative eigenvalues retained; nothing to ablate")
+    return 0
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     space = _load(args.space)
     meta = space.meta
@@ -296,6 +321,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--misses", type=int, default=0,
                    help="show this many wrong answers per category")
     p.set_defaults(func=cmd_evaluate)
+
+    p = sub.add_parser("sweep", help="test the pipeline's free parameters")
+    p.add_argument("--method", default="3cosadd",
+                   choices=["3cosadd", "3cosmul"])
+    p.add_argument("--limit", type=int, default=60)
+    p.add_argument("--seed", type=int, default=20260811)
+    p.set_defaults(func=cmd_sweep)
 
     p = sub.add_parser("demo", help="a guided tour of the results")
     p.set_defaults(func=cmd_demo)

@@ -128,8 +128,15 @@ def build(
 
     # A = U L U.T for a symmetric A, so the truncated SVD's left factor is
     # U scaled by |L| to some power. Half is the symmetric choice: it splits
-    # the singular values evenly between the word side and the context side,
-    # and it consistently beats both 0 and 1 in the literature.
+    # the singular values evenly between the word side and the context side.
+    #
+    # It is not the best choice on this corpus. `python -m sens sweep` scores
+    # the exponent against the benchmark and finds accuracy rising all the
+    # way to 1.0, consistently across seeds. The default stays at 0.5 because
+    # the only metric that can currently arbitrate is a morphological analogy
+    # test, and a higher exponent is exactly the kind of change that flatters
+    # analogy while costing similarity. Moving it needs a second measurement,
+    # not a first one.
     scale = [abs(v) ** config.eigenvalue_power for v in values]
     scaled = [[x * s for x, s in zip(row, scale)] for row in vectors]
 

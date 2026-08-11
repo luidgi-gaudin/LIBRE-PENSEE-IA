@@ -147,6 +147,67 @@ class Space:
         return scored
 
     # ----------------------------------------------------------------
+    # variations on the same factorisation
+    # ----------------------------------------------------------------
+
+    def _eigenvalues(self) -> list[float]:
+        values = self.meta.get("eigenvalues")
+        if not values or len(values) != self.dim:
+            raise ValueError(
+                "this space has no recorded eigenvalues, so it cannot be "
+                "reweighted or sliced; rebuild it with sens.pipeline.build"
+            )
+        return list(values)
+
+    def rescaled(self, power: float) -> "Space":
+        """The same factorisation with a different eigenvalue weighting.
+
+        Word vectors are eigenvectors scaled by `|eigenvalue| ** power`, and
+        that exponent is a free parameter nobody derives from anything — 0,
+        0.5 and 1 all appear in the literature. Changing it does not require
+        touching the corpus, so sweeping it costs one evaluation each rather
+        than one full rebuild each.
+        """
+        values = self._eigenvalues()
+        current = self.meta.get("config", {}).get("eigenvalue_power", 0.5)
+        delta = power - current
+        factors = [
+            (abs(v) ** delta) if v else 0.0 for v in values
+        ]
+        meta = dict(self.meta)
+        meta["config"] = {**meta.get("config", {}), "eigenvalue_power": power}
+        return Space(
+            words=list(self.words),
+            vectors=[
+                [x * f for x, f in zip(row, factors)] for row in self.vectors
+            ],
+            meta=meta,
+        )
+
+    def subspace(self, keep: list[int]) -> "Space":
+        """A space using only the listed dimensions.
+
+        The point of this is ablation. A dimension can be removed and the
+        result measured, which is the only way to find out whether an axis
+        was carrying anything.
+        """
+        values = self._eigenvalues()
+        meta = dict(self.meta)
+        meta["eigenvalues"] = [values[i] for i in keep]
+        return Space(
+            words=list(self.words),
+            vectors=[[row[i] for i in keep] for row in self.vectors],
+            meta=meta,
+        )
+
+    def positive_dimensions(self) -> list[int]:
+        """Indices whose eigenvalue is positive."""
+        return [i for i, v in enumerate(self._eigenvalues()) if v > 0]
+
+    def negative_dimensions(self) -> list[int]:
+        return [i for i, v in enumerate(self._eigenvalues()) if v < 0]
+
+    # ----------------------------------------------------------------
     # persistence
     # ----------------------------------------------------------------
 
