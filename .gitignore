@@ -1,0 +1,14 @@
+# Build artifacts: a space is always reproducible from the corpus and a
+# seed, so there is nothing here worth versioning.
+build/
+
+# Corpus. One book is committed so a fresh clone can build offline; the
+# rest arrive via `python -m sens fetch`.
+corpus/*.txt
+!corpus/moby-dick.txt
+corpus/*.part
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
