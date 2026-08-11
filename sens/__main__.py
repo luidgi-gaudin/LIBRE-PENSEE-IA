@@ -6,6 +6,7 @@
     python -m sens analogy king man woman
     python -m sens similarity ship sea
     python -m sens axis sea land wind sailor house door
+    python -m sens evaluate
     python -m sens demo
     python -m sens info
 """
@@ -17,6 +18,7 @@ import os
 import sys
 
 from . import corpus
+from . import evaluate as evaluate_mod
 from .pipeline import Config, build
 from .space import Space
 
@@ -174,6 +176,59 @@ def cmd_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_evaluate(args: argparse.Namespace) -> int:
+    space = _load(args.space)
+    categories = evaluate_mod.build_benchmark(space)
+    if not categories:
+        sys.exit("vocabulary too small to generate a benchmark")
+
+    print("benchmark generated from the vocabulary")
+    for category in categories:
+        sample = ", ".join(f"{a}/{b}" for a, b in sorted(category.pairs)[:3])
+        print(f"  {category.name:<12} {len(category.pairs):4} pairs   {sample}")
+
+    scores, misses = evaluate_mod.evaluate(
+        space, limit=args.limit, seed=args.seed
+    )
+
+    methods = sorted({s.method for s in scores})
+    names = [c.name for c in categories]
+    width = max(len(n) for n in names + ["ALL"])
+
+    header = "  top1    top5    form"
+    print(f"\n{'':<{width}}  " + "  ".join(f"{m:<24}" for m in methods))
+    print(f"{'':<{width}}  " + "  ".join(f"{header:<24}" for _ in methods))
+
+    def row(label, pick):
+        cells = []
+        for method in methods:
+            hit = pick(method)
+            cells.append(
+                f"{hit.accuracy:6.1%}  {hit.recall5:6.1%}  {hit.form_rate:6.1%}"
+            )
+        print(f"{label:<{width}}  " + "  ".join(cells))
+
+    for name in names:
+        row(name, lambda m, n=name: next(
+            s for s in scores if s.category == n and s.method == m
+        ))
+
+    combined = evaluate_mod.totals(scores)
+    row("ALL", lambda m: combined[m])
+    print(f"\n{combined[methods[0]].asked} questions per method")
+
+    if args.misses:
+        print("\nwhat it says instead")
+        for key in sorted(misses):
+            examples = misses[key][: args.misses]
+            if not examples:
+                continue
+            print(f"\n  {key}")
+            for a, b, c, d, got in examples:
+                print(f"    {a} : {b} :: {c} : {got}   (wanted {d})")
+    return 0
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     space = _load(args.space)
     meta = space.meta
@@ -233,6 +288,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("words", nargs="*")
     p.add_argument("-n", type=int, default=20)
     p.set_defaults(func=cmd_axis)
+
+    p = sub.add_parser("evaluate", help="score the space on a generated benchmark")
+    p.add_argument("--limit", type=int, default=120,
+                   help="questions per category per method")
+    p.add_argument("--seed", type=int, default=20260811)
+    p.add_argument("--misses", type=int, default=0,
+                   help="show this many wrong answers per category")
+    p.set_defaults(func=cmd_evaluate)
 
     p = sub.add_parser("demo", help="a guided tour of the results")
     p.set_defaults(func=cmd_demo)

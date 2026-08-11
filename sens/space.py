@@ -96,6 +96,39 @@ class Space:
         target = [y - x + z for x, y, z in zip(va, vb, vc)]
         return self.rank(target, n=n, exclude={a, b, c})
 
+    def analogy_mul(
+        self, a: str, b: str, c: str, n: int = 5, epsilon: float = 1e-3
+    ) -> list[tuple[str, float]]:
+        """`a` is to `b` as `c` is to what, scored multiplicatively.
+
+        Additive analogy sums three similarities, so one large term can carry
+        the answer on its own — which is why vector-offset analogies so often
+        return a word that is merely very close to `c` and ignores `b`. The
+        multiplicative form asks for all three conditions at once:
+
+            argmax   sim(d, b) * sim(d, c) / (sim(d, a) + epsilon)
+
+        A product cannot be rescued by one strong factor; every term has to
+        be satisfied. Cosines are mapped from [-1, 1] to [0, 1] first, since
+        a product of signed quantities would let two negatives agree.
+
+        This is Levy and Goldberg's 3CosMul, and the reason it is here is
+        that it is reported to help most exactly where this corpus lives:
+        at small scale, where the additive form is least reliable.
+        """
+        da, db, dc = self.direction(a), self.direction(b), self.direction(c)
+        skip = {a, b, c}
+        scored = []
+        for i, u in enumerate(self.units):
+            if self.words[i] in skip:
+                continue
+            pa = (dot(u, da) + 1.0) / 2.0
+            pb = (dot(u, db) + 1.0) / 2.0
+            pc = (dot(u, dc) + 1.0) / 2.0
+            scored.append((pb * pc / (pa + epsilon), i))
+        scored.sort(reverse=True)
+        return [(self.words[i], s) for s, i in scored[:n]]
+
     def axis(
         self, negative: str, positive: str, words: list[str]
     ) -> list[tuple[str, float]]:

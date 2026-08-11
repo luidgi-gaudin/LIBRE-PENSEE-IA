@@ -7,8 +7,9 @@ lands on `her`, and where the line from `sea` to `land` sorts `harpoon` from
 
 Pure Python. No NumPy, no SciPy, no dependencies of any kind. Every
 multiply-add is a Python float operation you could step through in a
-debugger. 510 lines implement the method — the rest of the 747 is a command
-line and a corpus fetcher. 110 tests. 42 seconds end to end.
+debugger. 525 lines implement the method — the rest of the 959 is a command
+line, a corpus fetcher and an evaluation harness. 148 tests. 42 seconds end
+to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -124,6 +125,63 @@ eigenvalue instead of by magnitude would throw that axis away. Ranking by
 `|λ|` is what makes this a truncated SVD rather than a truncated
 eigendecomposition, and the difference is not cosmetic.
 
+## Measuring it
+
+Neighbour lists are easy to admire and impossible to argue with. You read
+`whale -> sperm, fishery, whales`, you nod, and you have learned nothing you
+could compare against another build. So `python -m sens evaluate` generates a
+benchmark **from the vocabulary itself** — no download, no human judgement.
+English morphology is regular enough that `walk : walked :: work : worked`
+can be constructed by string manipulation, and the vocabulary is its own
+filter: a bad stem yields a non-word, and non-words are not in the top 4,000.
+
+```
+             3cosadd                   3cosmul
+               top1    top5    form      top1    top5    form
+plural         7.5%   17.5%   34.2%    6.7%   14.2%   30.8%
+past           0.0%   10.0%   18.3%    0.0%    7.5%   22.5%
+progressive    0.8%    5.0%   10.0%    0.8%    3.3%   10.0%
+adverb         0.8%    0.8%   11.7%    0.0%    1.7%    9.2%
+possessive    10.8%   31.7%   44.2%   10.8%   34.2%   46.7%
+er-form        1.7%    5.0%    1.7%    1.7%    3.3%    1.7%
+negation       3.3%    9.2%    6.7%    0.8%    8.3%    4.2%
+ALL            3.6%   11.3%   18.1%    3.0%   10.4%   17.9%
+
+840 questions per method
+```
+
+Two things came out of this that I did not expect.
+
+**The multiplicative method didn't help.** I added 3CosMul because Levy and
+Goldberg report it beating vector-offset, most of all on small corpora — this
+corpus being about as small as they come. It came out *slightly worse*: 3.0%
+against 3.6%. At this accuracy both are close enough to the floor that the
+difference is not worth defending in either direction, which is itself the
+finding. The prediction was clean, the measurement disagreed, and both are in
+the repository.
+
+**The `form` column is where the real result is.** It counts answers that are
+the right *kind* of word even when they are the wrong word. Asked for
+`bingley's`, the model says `darcy's`:
+
+```
+friend : friend's :: bingley : darcy's     (wanted bingley's)
+count  : count's  :: dolokhov : prince's   (wanted dolokhov's)
+```
+
+That is not noise. On possessives the model produces *a possessive* 44% of
+the time and *the right* possessive 11% of the time — a fourfold gap. The
+relation is in the geometry; what fails is holding onto `c` while applying
+it. Accuracy alone cannot tell `darcy's` from `darcy`, and those two failures
+mean opposite things: one says the relation was never learned, the other says
+it was learned and the identity leaked. Only the second is true here.
+
+The `er-form` row is the control that makes the rest credible. Its form rate
+is 1.7% — the floor — because `-er` is two relations wearing one suffix
+(`bank`/`banker` is an agent, `hard`/`harder` a comparative) and the model
+cannot encode a direction that points two ways at once. A metric that scored
+everything highly would be measuring itself.
+
 ## What doesn't work
 
 Analogies are the famous demo and they are the weakest thing here.
@@ -184,6 +242,8 @@ python -m sens fetch                    # the other five novels
 python -m sens build                    # all six, ~42s
 
 python -m sens demo
+python -m sens evaluate                 # score it on a generated benchmark
+python -m sens evaluate --misses 5      # ...and see what it says instead
 python -m sens neighbors whale ship happiness
 python -m sens analogy father mother son
 python -m sens similarity ship boat garden
@@ -211,11 +271,12 @@ sens/text.py       tokenising, vocabulary
 sens/counts.py     the sliding window
 sens/weight.py     PPMI
 sens/linalg.py     sparse matvec, CholeskyQR, Jacobi, randomised range finder
-sens/space.py      cosine, neighbours, analogy, axis, file format
+sens/space.py      cosine, neighbours, analogy (3CosAdd + 3CosMul), axis
+sens/evaluate.py   a benchmark generated from the vocabulary itself
 sens/pipeline.py   the five stages, end to end
 sens/corpus.py     which books, and fetching them
 sens/__main__.py   the CLI
-tests/             110 tests
+tests/             148 tests
 ```
 
 ```bash

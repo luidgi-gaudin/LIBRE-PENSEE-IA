@@ -118,6 +118,36 @@ def fan() -> Space:
     )
 
 
+class TestAnalogyMul(unittest.TestCase):
+    def test_solves_the_parallelogram(self):
+        self.assertEqual(
+            square().analogy_mul("king", "queen", "man", n=1)[0][0], "woman"
+        )
+
+    def test_excludes_all_three_inputs(self):
+        returned = {w for w, _ in square().analogy_mul("king", "queen", "man")}
+        self.assertFalse(returned & {"king", "queen", "man"})
+
+    def test_respects_the_count(self):
+        self.assertEqual(len(square().analogy_mul("king", "queen", "man", n=1)), 1)
+
+    def test_scores_are_descending(self):
+        scores = [s for _, s in square().analogy_mul("king", "queen", "man")]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+
+    def test_scores_stay_positive(self):
+        # Cosines are mapped into [0, 1] before multiplying, so no score can
+        # come out negative however the vectors are arranged.
+        s = Space(words=["a", "b", "c", "d"],
+                  vectors=[[1.0, 0.0], [-1.0, 0.2], [0.0, -1.0], [0.5, 0.5]])
+        for _, score in s.analogy_mul("a", "b", "c"):
+            self.assertGreaterEqual(score, 0.0)
+
+    def test_unknown_word_raises(self):
+        with self.assertRaises(KeyError):
+            square().analogy_mul("king", "queen", "jester")
+
+
 class TestAxis(unittest.TestCase):
     def test_orders_from_the_negative_end_to_the_positive_end(self):
         s = fan()
