@@ -13,6 +13,7 @@
     python -m sens audit
     python -m sens dimensions
     python -m sens subspaces
+    python -m sens noise
     python -m sens demo
     python -m sens info
 """
@@ -29,6 +30,7 @@ from . import experiments
 from . import heldout as heldout_mod
 from . import baseline as baseline_mod
 from . import audit as audit_mod
+from . import noise as noise_mod
 from .pipeline import Config, build
 from .space import Space
 
@@ -455,6 +457,31 @@ def cmd_subspaces(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_noise(args: argparse.Namespace) -> int:
+    """How big does a difference have to be before it means anything?"""
+    works = corpus.available()
+    if not works:
+        sys.exit("no corpus files found; run `python -m sens fetch`")
+    paths = [w.path for w in works]
+
+    print("rebuilding under several seeds; expect several minutes",
+          file=sys.stderr)
+    ruler = audit_mod.build_ruler(paths)
+    spreads = noise_mod.measure(
+        paths, ruler, seeds=tuple(args.seeds), limit=args.limit,
+        progress=lambda s: print(f"  seed {s} ...", file=sys.stderr, flush=True),
+    )
+    print(f"\n{len(args.seeds)} builds, identical but for the random seed\n")
+    for spread in spreads:
+        print("  " + spread.row)
+    print(
+        "\n  Differences smaller than the noise floor mean nothing. This is a"
+        "\n  lower bound: the seed is the only thing varied here, so the real"
+        "\n  uncertainty on any number is larger, never smaller."
+    )
+    return 0
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     space = _load(args.space)
     meta = space.meta
@@ -566,6 +593,14 @@ def main(argv: list[str] | None = None) -> int:
         "subspaces", help="do two factorisations find the same directions?"
     )
     p.set_defaults(func=cmd_subspaces)
+
+    p = sub.add_parser(
+        "noise", help="measure the noise floor of every metric (slow)"
+    )
+    p.add_argument("--seeds", type=int, nargs="+",
+                   default=list(noise_mod.DEFAULT_SEEDS))
+    p.add_argument("--limit", type=int, default=120)
+    p.set_defaults(func=cmd_noise)
 
     p = sub.add_parser("demo", help="a guided tour of the results")
     p.set_defaults(func=cmd_demo)

@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 285 tests. 40 seconds end to end.
+and an audit of every default. 303 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -139,6 +139,59 @@ Neighbour lists are easy to admire and impossible to argue with. You read
 `whale -> sperm, fishery, whales`, you nod, and you have learned nothing you
 could compare against another build. There are three measurements here, and
 none of them needs a download or a human judgement.
+
+### First: how big is a real difference?
+
+Almost every claim below is one number against another. The exponent moved
+because 0.6002 beat 0.5077; `alpha` moved because 0.6002 beat 0.5908. Written
+down those look alike. They are not alike at all, and for most of this
+repository's life nothing here could tell them apart, because no measurement
+had an error bar.
+
+`python -m sens noise` supplies one. The factorisation starts from a random
+block, so the seed changes the answer while changing nothing about the
+method. Six builds, identical but for the seed:
+
+```
+held-out   mean   0.6010  sd   0.0038  range 0.5955-0.6053   noise floor 0.0076
+top1       mean     4.1%  sd     0.2%  range   3.7%-4.4%     noise floor   0.5%
+top5       mean    12.5%  sd     0.8%  range  11.0%-13.2%    noise floor   1.6%
+form       mean    21.8%  sd     0.8%  range  20.6%-22.6%    noise floor   1.6%
+```
+
+This is a lower bound on the real uncertainty, not an estimate of it — the
+corpus, the split and the benchmark questions are all held fixed, so they
+contribute nothing to this spread while contributing plenty in reality. A
+difference this calls noise is definitely noise.
+
+Applying it to the claims in this README, which is not a flattering exercise:
+
+```
+exponent 0.5 -> 1.0        (held-out 0.5077 -> 0.6002)   24.1 sd   solid
+min_pair_weight 1 vs 0     (held-out 0.5908 vs 0.5171)   19.2 sd   solid
+shift 1 vs 2               (held-out 0.5908 vs 0.5276)   16.4 sd   solid
+krylov vs subspace         (form 17.7% -> 22.6%)          6.4 sd   solid
+alpha 0.75 -> 1.0          (held-out 0.5908 -> 0.6002)    2.4 sd   marginal
+krylov+shrink10 vs default (held-out +0.0094)             2.4 sd   marginal
+window 4 vs 2              (held-out 0.5908 vs 0.5830)    2.0 sd   marginal
+alpha 0.75 -> 1.0          (form 22.0% -> 22.6%)          0.8 sd   noise
+alpha 0.75 -> 1.0          (top1 4.0% -> 4.2%)            0.8 sd   noise
+3cosadd vs 3cosmul         (top1 4.2% vs 4.3%)            0.4 sd   noise
+window 4 vs 6              (held-out 0.5908 vs 0.5895)    0.3 sd   noise
+```
+
+Three corrections follow, and they are marked in place further down rather
+than quietly applied. **The `alpha` change rests on one marginal result, not
+two agreeing ones** — I wrote that "the analogy benchmark agrees
+independently", and at 0.8 sd it does no such thing. **Window 4 and window 6
+are indistinguishable**, so the audit's tidy "three of four confirmed" was
+really "three of four, one of them by a margin I could not measure".
+**Krylov with shrinkage beating the default on held-out is marginal too**, at
+2.4 sd from a single pair of runs.
+
+The solid results stay solid, and the two conclusions this repository cares
+most about — the exponent, and compression trading identity for category —
+are the furthest above the floor of anything here.
 
 ### Morphological analogy
 
@@ -496,8 +549,10 @@ noise that hurts category.
 The second is the more interesting one. Explicit shrinkage recovers top-1
 completely (4.5% against the default's 4.2%) and most of form, but never
 top-5, and there is no threshold at which Krylov wins on both metrics at
-once. At shrinkage 10 it beats the default on held-out — 0.6096 against
-0.6002, at 39% less build time — and loses on form. **So the accidental
+once. At shrinkage 10 it edges the default on held-out — 0.6096 against 0.6002, at
+39% less build time, though that gap is 2.4 sd and so
+[marginal](#first-how-big-is-a-real-difference) — and loses on form by a
+margin that is not. **So the accidental
 regularisation is not purely a matter of magnitude.** If it were, rescaling
 would reproduce it exactly.
 
@@ -526,8 +581,9 @@ turns it into a useful one.
 
 The default therefore stays on subspace iteration, because category structure
 is the property this repository has spent its length arguing is the
-interesting one. `factoriser="krylov"` with `shrinkage=10` is the better
-choice if you want similarity and speed. The finding is the point rather than
+interesting one. `factoriser="krylov"` with `shrinkage=10` is the
+plausible choice if you want similarity and speed, on a margin thin enough
+that "no worse, and faster" is the safer way to describe it. The finding is the point rather than
 the code: on this problem a more faithful decomposition of the matrix is a
 less useful description of the language, and there was no way to know that
 without measuring the model rather than the mathematics.
@@ -551,14 +607,26 @@ shift             1.0=0.5908  2.0=0.5276  5.0=0.3409
 min_pair_weight   0.0=0.5171  1.0=0.5908  2.0=0.4950
 ```
 
-Three of four confirmed. `alpha` was not, and it has moved to 1.0 — which
-means the context-distribution smoothing is now *off*.
+Three of four confirmed — though only two of them by a margin the
+[noise floor](#first-how-big-is-a-real-difference) can see. Window 4 beats
+window 6 by 0.3 sd, which is to say not at all; what the row actually shows
+is that anything between 4 and 6 is fine and the extremes are slightly worse.
+`shift` and `min_pair_weight` are solid at 16 and 19 sd.
+
+`alpha` was not confirmed, and it has moved to 1.0 — which means the
+context-distribution smoothing is now *off*.
 
 That is a small surprise. Raising context probabilities to the power 0.75 is
 one of the more reliably transferred tricks in the literature, and it does
-nothing useful here; the analogy benchmark agrees independently (4.2% against
-4.0%, and every category's form rate up). Note also that it wins *against* a
-ruler built with the old value, so the effect is if anything understated.
+nothing useful here.
+
+**The evidence is thinner than I first reported it.** I originally wrote that
+the analogy benchmark agreed independently, citing 4.2% against 4.0%. Against
+a noise floor of 0.5% on top-1 that is 0.8 sd — nothing. The change rests on
+the held-out result alone, at 2.4 sd, which is marginal. What supports it is
+that the same marginal difference appeared again at a second vocabulary size
+below, in the same direction, and that it wins *against* a ruler built with
+the old value. Two weak results pointing the same way, not one strong one.
 
 I had a tidy explanation ready: smoothing exists to stop rare contexts
 earning enormous PMI scores, and a vocabulary capped at 4,000 words with a
@@ -647,6 +715,7 @@ python -m sens sweep                    # exponent sweep and sign ablation
 python -m sens audit                    # every default, fixed ruler (slow)
 python -m sens dimensions               # how many dimensions (slow)
 python -m sens subspaces                # do two factorisations agree?
+python -m sens noise                    # the noise floor of every metric
 python -m sens neighbors whale ship happiness
 python -m sens analogy father mother son
 python -m sens similarity ship boat garden
@@ -683,7 +752,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              285 tests
+tests/              303 tests
 ```
 
 ```bash
