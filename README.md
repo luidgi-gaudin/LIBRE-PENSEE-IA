@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 303 tests. 40 seconds end to end.
+and an audit of every default. 311 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -602,12 +602,22 @@ so it takes several minutes.
 
 ```
 window            2=0.5830  4=0.5908  6=0.5895  10=0.5834
+harmonic          False=0.4990  True=0.6002
 alpha             0.5=0.5651  0.75=0.5908  1.0=0.6002   <-- 1.0 beats 0.75
 shift             1.0=0.5908  2.0=0.5276  5.0=0.3409
 min_pair_weight   0.0=0.5171  1.0=0.5908  2.0=0.4950
 ```
 
-Three of four confirmed — though only two of them by a margin the
+**The `1/distance` weighting is the largest single effect in the pipeline**,
+and it was the one parameter with nothing behind it but a sentence of prose.
+Turning it off costs 0.1012 of held-out correlation — 26 sd, bigger than the
+eigenvalue exponent, bigger than anything else measured here. The argument
+for it was that syntactic relations are mostly local and a flat window lets
+the far edge shout as loudly as the word next door. That argument turns out
+to be worth more than the entire factorisation-tuning effort several sections
+above.
+
+Four of five confirmed — though only two of them by a margin the
 [noise floor](#first-how-big-is-a-real-difference) can see. Window 4 beats
 window 6 by 0.3 sd, which is to say not at all; what the row actually shows
 is that anything between 4 and 6 is fine and the extremes are slightly worse.
@@ -643,6 +653,40 @@ It did not reverse. The explanation is wrong and I do not have a replacement,
 so the docstring in `weight.py` says the correction fails on this corpus and
 that why is unexplained. The rows are not comparable to each other — a
 different vocabulary means a different ruler — only within each row.
+
+### The two that needed a different ruler
+
+`vocab_size` and `min_count` change *which words exist*, so a different
+vocabulary means different columns in the truth table and every candidate
+would be marked against a different scheme. For a long time this README said
+they simply could not be audited.
+
+They can, using a property the tests already pin down: vocabularies from one
+corpus are **nested**. `Vocabulary.from_tokens` sorts by descending frequency
+before applying either cut, so raising `min_count` and lowering `max_size`
+both remove a suffix, and index *i* is the same word in every vocabulary. So
+build the truth once from the largest, and score only pairs drawn from words
+every candidate contains. `python -m sens audit --vocabulary`:
+
+```
+vocab_size        2000=0.5867  4000=0.5957  8000=0.6036   <-- 8000 beats 4000
+min_count         5=0.5957  10=0.5957  20=0.5938
+```
+
+**`min_count` does nothing.** Across a fourfold range it moves the result by
+0.5 sd at most — it is a knob that is not connected to anything, which is
+worth knowing precisely because it looks like it should matter.
+
+`vocab_size` rises monotonically and 8,000 beats the default by 2.1 sd, which
+is marginal. It stays at 4,000 for the same reason `dim` stays at 64: the
+gain is small, the cost is not, and a marginal difference is a poor reason to
+double a build. (These two rows use the reference vocabulary as their ruler,
+so they are comparable to each other but not to the table above.)
+
+With this, **every parameter the pipeline exposes has been measured** —
+either in the grid above, in `sens dimensions`, `sens noise`, `sens
+subspaces`, or the shrinkage sweep. A test enforces it, so a new `Config`
+field cannot quietly slip in unmeasured.
 
 Two parameters cannot be audited this way at all. Changing `vocab_size` or
 `min_count` changes which words exist, so the pairs and the truth table
@@ -713,6 +757,7 @@ python -m sens heldout                  # predict unseen text
 python -m sens baseline                 # compare against no compression
 python -m sens sweep                    # exponent sweep and sign ablation
 python -m sens audit                    # every default, fixed ruler (slow)
+python -m sens audit --vocabulary       # ...including vocab_size/min_count
 python -m sens dimensions               # how many dimensions (slow)
 python -m sens subspaces                # do two factorisations agree?
 python -m sens noise                    # the noise floor of every metric
@@ -752,7 +797,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              303 tests
+tests/              311 tests
 ```
 
 ```bash

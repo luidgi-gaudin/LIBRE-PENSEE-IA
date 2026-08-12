@@ -12,9 +12,14 @@ each candidate would move the ruler along with the thing being measured, and
 the comparison would be worth nothing. So the vocabulary and the truth table
 are computed once, from the defaults, and held fixed for the whole sweep.
 
-A consequence worth stating: `vocab_size` and `min_count` cannot be audited
-this way. Changing them changes which words exist, so the pairs and the truth
-change too, and there is no fixed ruler left to measure against.
+`vocab_size` and `min_count` need a different fixed ruler, because changing
+them changes which words exist. `audit_vocabulary` builds one: it takes the
+truth table from the largest vocabulary under test and restricts the scored
+pairs to words every candidate contains. That is possible only because
+vocabularies from the same corpus are nested — `Vocabulary.from_tokens` sorts
+by descending frequency before applying either cut, so both `min_count` and
+`max_size` remove a suffix, and a smaller vocabulary is always a prefix of a
+larger one with the same word at every shared index.
 """
 
 from __future__ import annotations
@@ -33,6 +38,7 @@ from .weight import ppmi
 # Only parameters the fixed ruler can fairly judge.
 DEFAULT_GRID: tuple[tuple[str, tuple], ...] = (
     ("window", (2, 4, 6, 10)),
+    ("harmonic", (False, True)),
     ("alpha", (0.5, 0.75, 1.0)),
     ("shift", (1.0, 2.0, 5.0)),
     ("min_pair_weight", (0.0, 1.0, 2.0)),
@@ -174,5 +180,106 @@ def audit(
                     Config(**{**base.as_dict(), parameter: value})
                 )
             finding.scores.append((value, cache[key]))
+        findings.append(finding)
+    return findings
+
+
+def audit_vocabulary(
+    paths: list[str],
+    sizes: tuple[int, ...] = (2000, 4000, 8000),
+    min_counts: tuple[int, ...] = (5, 10, 20),
+    base: Config | None = None,
+    block: int = 4000,
+    pair_vocab: int = 1200,
+    pair_count: int = 4000,
+    seed: int = 20260811,
+    progress=None,
+) -> list[Finding]:
+    """Audit the two parameters that change which words exist.
+
+    The ordinary ruler cannot judge these: a different vocabulary means
+    different columns in the truth table and therefore different cosines, so
+    every candidate would be marked against a different mark scheme.
+
+    The fix uses the nesting property. Build the truth once from the largest
+    vocabulary, then score only word pairs drawn from the first `pair_vocab`
+    entries — those are the most frequent words, they exist in every
+    candidate, and because the vocabularies are nested they sit at the same
+    index in each. The truth never moves; only the space being judged does.
+    """
+    base = base or Config()
+    ruler_cfg = Config(**{**base.as_dict(), **RULER})
+
+    tokens: list[str] = []
+    for path in paths:
+        tokens.extend(read_tokens(path))
+    train, test = split_blocks(tokens, block=block)
+
+    reference = Vocabulary.from_tokens(
+        train, max_size=max(sizes), min_count=min(min_counts)
+    )
+    truth = ppmi(
+        cooccurrence(
+            reference.encode(test),
+            size=len(reference),
+            window=ruler_cfg.window,
+            harmonic=ruler_cfg.harmonic,
+            min_weight=ruler_cfg.min_pair_weight,
+        ),
+        alpha=ruler_cfg.alpha,
+        shift=ruler_cfg.shift,
+    )
+
+    smallest = min(
+        len(Vocabulary.from_tokens(train, max_size=s, min_count=m))
+        for s in sizes
+        for m in min_counts
+    )
+    ceiling = min(pair_vocab, smallest)
+
+    rng = random.Random(seed)
+    pairs: set[tuple[int, int]] = set()
+    attempts = 0
+    while len(pairs) < pair_count and attempts < pair_count * 50:
+        attempts += 1
+        i, j = rng.randrange(ceiling), rng.randrange(ceiling)
+        if i == j:
+            continue
+        key = (min(i, j), max(i, j))
+        if key in pairs or not truth.rows[key[0]] or not truth.rows[key[1]]:
+            continue
+        pairs.add(key)
+    ordered = sorted(pairs)
+
+    def score(config: Config) -> float:
+        space, _ = build_from_tokens(train, config, verbose=False)
+        # The nesting property is load-bearing; check it rather than trust it.
+        for index in (0, ceiling - 1):
+            if space.words[index] != reference.words[index]:
+                raise ValueError(
+                    "vocabularies are not nested as assumed: index "
+                    f"{index} is {space.words[index]!r} here and "
+                    f"{reference.words[index]!r} in the reference"
+                )
+        predicted, actual = [], []
+        for i, j in ordered:
+            value = sparse_cosine(truth.rows[i], truth.rows[j])
+            if value == 0.0:
+                continue
+            predicted.append(
+                sum(x * y for x, y in zip(space.units[i], space.units[j]))
+            )
+            actual.append(value)
+        return spearman(predicted, actual)
+
+    findings = []
+    for parameter, values in (("vocab_size", sizes), ("min_count", min_counts)):
+        finding = Finding(parameter=parameter, default=getattr(base, parameter))
+        for value in values:
+            if progress:
+                progress(parameter, value)
+            finding.scores.append(
+                (value, score(Config(**{**base.as_dict(), parameter: value})))
+            )
         findings.append(finding)
     return findings

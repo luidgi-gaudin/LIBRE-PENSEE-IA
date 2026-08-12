@@ -93,6 +93,26 @@ class TestVocabulary(unittest.TestCase):
         small = Vocabulary.from_tokens(self.tokens, min_count=1, max_size=2)
         self.assertEqual(big.words[: len(small)], small.words)
 
+    def test_raising_min_count_also_leaves_a_prefix(self):
+        # Load-bearing for audit_vocabulary, which scores several
+        # vocabularies against one truth table by assuming that index i is
+        # the same word in all of them. Both cuts remove a suffix of the
+        # frequency-sorted list, so every vocabulary from a given corpus is
+        # a prefix of every larger one.
+        loose = Vocabulary.from_tokens(self.tokens, min_count=1)
+        strict = Vocabulary.from_tokens(self.tokens, min_count=6)
+        self.assertEqual(loose.words[: len(strict)], strict.words)
+
+    def test_the_two_cuts_agree_with_each_other(self):
+        # Reaching a given size by raising min_count or by lowering max_size
+        # must give the same words, or "the vocabularies are nested" would
+        # depend on which knob you turned.
+        by_count = Vocabulary.from_tokens(self.tokens, min_count=6)
+        by_size = Vocabulary.from_tokens(
+            self.tokens, min_count=1, max_size=len(by_count)
+        )
+        self.assertEqual(by_count.words, by_size.words)
+
     def test_counts_line_up_with_words(self):
         vocab = Vocabulary.from_tokens(self.tokens, min_count=1)
         self.assertEqual(vocab.counts[vocab.index["whale"]], 6)

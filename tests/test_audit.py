@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import unittest
 
-from sens.audit import DEFAULT_GRID, Finding, Ruler, audit, build_ruler
+from sens.audit import (DEFAULT_GRID, Finding, Ruler, audit,
+                        audit_vocabulary, build_ruler)
 from sens.linalg import SparseMatrix
 from sens.pipeline import Config
 from sens.text import Vocabulary
@@ -55,11 +56,40 @@ class TestGrid(unittest.TestCase):
             self.assertIn(getattr(config, parameter), values, parameter)
 
     def test_vocabulary_parameters_are_excluded(self):
-        # Changing these changes which words exist, so no fixed ruler
-        # survives and the comparison would be meaningless.
+        # Changing these changes which words exist, so the ordinary ruler
+        # cannot judge them. audit_vocabulary handles them separately.
         names = {p for p, _ in DEFAULT_GRID}
         self.assertNotIn("vocab_size", names)
         self.assertNotIn("min_count", names)
+
+    def test_every_parameter_the_pipeline_exposes_is_audited_somewhere(self):
+        # The point of the audit is that no default goes unmeasured, so a
+        # new Config field should not be able to slip past it unnoticed.
+        gridded = {p for p, _ in DEFAULT_GRID}
+        elsewhere = {
+            "vocab_size", "min_count",   # audit_vocabulary
+            "dim",                       # sens dimensions
+            "seed",                      # sens noise
+            "factoriser", "krylov_block", "krylov_depth",  # sens subspaces
+            "oversample", "power_iterations",              # accuracy section
+            "shrinkage",                 # the shrinkage sweep
+        }
+        for name in Config().as_dict():
+            self.assertTrue(
+                name in gridded or name in elsewhere,
+                f"{name} is not measured anywhere",
+            )
+
+
+def grid_key(config) -> tuple:
+    """Identify a build by every parameter the grid can vary.
+
+    Keying on a hand-listed subset silently breaks when a parameter joins
+    the grid — a `harmonic=False` build looked identical to the default one
+    and made a caching test fail against correct code.
+    """
+    values = config if isinstance(config, dict) else config.as_dict()
+    return tuple(values[name] for name, _ in DEFAULT_GRID)
 
 
 class RecordingRuler(Ruler):
@@ -71,17 +101,14 @@ class RecordingRuler(Ruler):
 
     def score(self, config: Config) -> float:
         self.seen.append(config.as_dict())
-        key = (config.window, config.alpha, config.shift,
-               config.min_pair_weight, config.eigenvalue_power)
-        return self.responses.get(key, 0.0)
+        return self.responses.get(grid_key(config), 0.0)
 
 
 class TestAudit(unittest.TestCase):
     def setUp(self):
         base = Config()
         self.base = base
-        self.default_key = (base.window, base.alpha, base.shift,
-                            base.min_pair_weight, base.eigenvalue_power)
+        self.default_key = grid_key(base)
 
     def test_returns_one_finding_per_parameter(self):
         ruler = RecordingRuler({self.default_key: 0.5})
@@ -102,10 +129,7 @@ class TestAudit(unittest.TestCase):
         # minutes for nothing.
         ruler = RecordingRuler({self.default_key: 0.5})
         audit(ruler, base=self.base)
-        defaults = [c for c in ruler.seen if (
-            c["window"], c["alpha"], c["shift"],
-            c["min_pair_weight"], c["eigenvalue_power"]
-        ) == self.default_key]
+        defaults = [c for c in ruler.seen if grid_key(c) == self.default_key]
         self.assertEqual(len(defaults), 1)
 
     def test_only_one_parameter_moves_at_a_time(self):
@@ -120,10 +144,10 @@ class TestAudit(unittest.TestCase):
             self.assertLessEqual(len(differing), 1, differing)
 
     def test_a_winning_alternative_is_detected(self):
+        winner = Config(**{**self.base.as_dict(), "window": 10})
         ruler = RecordingRuler({
             self.default_key: 0.50,
-            (10, self.base.alpha, self.base.shift,
-             self.base.min_pair_weight, self.base.eigenvalue_power): 0.90,
+            grid_key(winner): 0.90,
         })
         findings = {f.parameter: f for f in audit(ruler, base=self.base)}
         self.assertFalse(findings["window"].default_wins)
@@ -188,3 +212,69 @@ class TestBuildRuler(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAuditVocabulary(unittest.TestCase):
+    """The two parameters the ordinary ruler cannot judge."""
+
+    def corpus(self, tmp):
+        import os
+
+        # Enough distinct words, repeated enough, that several vocabulary
+        # sizes are actually different from one another.
+        sentences = [
+            "the sailor sails the ship across the wide salt sea",
+            "a hunter walks a path through a dark green forest",
+            "the captain steers the vessel over the deep cold ocean",
+            "a farmer rides a road beside a bright warm field",
+        ]
+        path = os.path.join(tmp, "corpus.txt")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(" ".join(sentences * 300))
+        return path
+
+    def run_audit(self, **kwargs):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            return audit_vocabulary(
+                [self.corpus(tmp)],
+                sizes=(10, 20),
+                min_counts=(1, 5),
+                base=Config(vocab_size=20, min_count=1, dim=4, oversample=4),
+                block=400,
+                pair_vocab=8,
+                pair_count=20,
+                **kwargs,
+            )
+
+    def test_it_reports_both_parameters(self):
+        findings = self.run_audit()
+        self.assertEqual(
+            [f.parameter for f in findings], ["vocab_size", "min_count"]
+        )
+
+    def test_each_finding_covers_its_values(self):
+        findings = {f.parameter: f for f in self.run_audit()}
+        self.assertEqual(
+            [v for v, _ in findings["vocab_size"].scores], [10, 20]
+        )
+        self.assertEqual([v for v, _ in findings["min_count"].scores], [1, 5])
+
+    def test_scores_are_real_numbers(self):
+        for finding in self.run_audit():
+            for _, score in finding.scores:
+                self.assertGreaterEqual(score, -1.0)
+                self.assertLessEqual(score, 1.0)
+
+    def test_progress_is_reported(self):
+        calls = []
+        self.run_audit(progress=lambda p, v: calls.append((p, v)))
+        self.assertEqual(len(calls), 4)
+
+    def test_it_is_reproducible(self):
+        first = self.run_audit()
+        second = self.run_audit()
+        self.assertEqual(
+            [f.scores for f in first], [f.scores for f in second]
+        )

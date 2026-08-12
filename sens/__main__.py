@@ -389,6 +389,16 @@ def cmd_audit(args: argparse.Namespace) -> int:
     for finding in findings:
         print("  " + finding.row)
 
+    if args.vocabulary:
+        print("\nvocabulary parameters, against a truth table from the "
+              "largest vocabulary")
+        vocab_findings = audit_mod.audit_vocabulary(
+            [w.path for w in works], seed=args.seed, progress=progress
+        )
+        for finding in vocab_findings:
+            print("  " + finding.row)
+        findings = findings + vocab_findings
+
     wrong = [f for f in findings if not f.default_wins]
     print()
     if wrong:
@@ -578,6 +588,8 @@ def main(argv: list[str] | None = None) -> int:
         "audit", help="check every default against a fixed ruler (slow)"
     )
     p.add_argument("--seed", type=int, default=20260811)
+    p.add_argument("--vocabulary", action="store_true",
+                   help="also audit vocab_size and min_count (slower)")
     p.set_defaults(func=cmd_audit)
 
     p = sub.add_parser(
