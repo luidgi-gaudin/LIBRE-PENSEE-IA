@@ -141,3 +141,75 @@ class TestVocabulary(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTokenisationOptions(unittest.TestCase):
+    """The choices made before any counting happens."""
+
+    def test_case_is_folded_by_default(self):
+        self.assertEqual(list(tokenize("The Whale")), ["the", "whale"])
+
+    def test_case_can_be_kept(self):
+        self.assertEqual(
+            list(tokenize("The Whale", lowercase=False)), ["The", "Whale"]
+        )
+
+    def test_keeping_case_splits_a_word_from_itself(self):
+        # The cost of not folding: two vocabulary entries for one word, each
+        # built from half the evidence.
+        kept = list(tokenize("The whale. The whale.", lowercase=False))
+        self.assertEqual(kept.count("The"), 2)
+        self.assertEqual(kept.count("whale"), 2)
+        self.assertNotIn("the", kept)
+
+    def test_accents_are_folded_by_default(self):
+        self.assertEqual(list(tokenize("Mercédès")), ["mercedes"])
+
+    def test_not_folding_accents_shatters_the_word(self):
+        # The token pattern is ASCII letters, so an unfolded accented
+        # character is a boundary rather than a letter. This is why the
+        # option is a real fork and not a cosmetic one.
+        self.assertEqual(
+            list(tokenize("Mercédès", fold_accents=False)), ["merc", "d", "s"]
+        )
+
+    def test_clitics_stay_attached_by_default(self):
+        self.assertEqual(list(tokenize("the whale's jaw")),
+                         ["the", "whale's", "jaw"])
+
+    def test_clitics_can_be_split_off(self):
+        self.assertEqual(
+            list(tokenize("the whale's jaw", split_clitics=True)),
+            ["the", "whale", "'s", "jaw"],
+        )
+
+    def test_splitting_handles_contractions_too(self):
+        self.assertEqual(
+            list(tokenize("don't", split_clitics=True)), ["don", "'t"]
+        )
+
+    def test_splitting_leaves_plain_words_alone(self):
+        self.assertEqual(
+            list(tokenize("the whale swims", split_clitics=True)),
+            ["the", "whale", "swims"],
+        )
+
+    def test_splitting_never_yields_an_empty_stem(self):
+        # `'tis` loses its leading apostrophe to the token pattern, so there
+        # is nothing here to split; the guard is against emitting "".
+        for token in tokenize("'tis o'clock", split_clitics=True):
+            self.assertTrue(token)
+
+    def test_a_shared_clitic_becomes_one_token_for_every_word(self):
+        # The substantive consequence: possession stops being a property of
+        # each noun and becomes a word in its own right.
+        tokens = list(tokenize("the whale's and the ship's", split_clitics=True))
+        self.assertEqual(tokens.count("'s"), 2)
+
+    def test_normalise_respects_both_flags(self):
+        self.assertEqual(normalise("Café", lowercase=False), "Cafe")
+        self.assertEqual(normalise("Café", fold_accents=False), "café")
+
+    def test_curly_apostrophes_are_folded_regardless(self):
+        for kwargs in ({}, {"lowercase": False}, {"fold_accents": False}):
+            self.assertIn("'", normalise("don’t", **kwargs))

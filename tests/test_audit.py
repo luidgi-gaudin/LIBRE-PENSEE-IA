@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import unittest
 
-from sens.audit import (DEFAULT_GRID, Finding, Ruler, audit,
-                        audit_vocabulary, build_ruler)
+from sens.audit import (DEFAULT_GRID, TOKENISATIONS, Finding, Ruler, audit,
+                        audit_tokenisation, audit_vocabulary, build_ruler)
 from sens.linalg import SparseMatrix
 from sens.pipeline import Config
 from sens.text import Vocabulary
@@ -73,6 +73,7 @@ class TestGrid(unittest.TestCase):
             "factoriser", "krylov_block", "krylov_depth",  # sens subspaces
             "oversample", "power_iterations",              # accuracy section
             "shrinkage",                 # the shrinkage sweep
+            "lowercase", "fold_accents", "split_clitics",  # audit_tokenisation
         }
         for name in Config().as_dict():
             self.assertTrue(
@@ -278,3 +279,69 @@ class TestAuditVocabulary(unittest.TestCase):
         self.assertEqual(
             [f.scores for f in first], [f.scores for f in second]
         )
+
+
+class TestTokenisationVariants(unittest.TestCase):
+    def test_the_default_is_first_and_changes_nothing(self):
+        label, overrides = TOKENISATIONS[0]
+        self.assertEqual(label, "default")
+        self.assertEqual(overrides, {})
+
+    def test_every_override_names_a_real_config_field(self):
+        config = Config()
+        for _, overrides in TOKENISATIONS:
+            for name in overrides:
+                self.assertTrue(hasattr(config, name), name)
+
+    def test_every_variant_actually_differs_from_the_default(self):
+        config = Config()
+        for label, overrides in TOKENISATIONS[1:]:
+            self.assertTrue(
+                any(getattr(config, k) != v for k, v in overrides.items()),
+                label,
+            )
+
+    def test_it_scores_every_variant_on_the_same_pairs(self):
+        # The whole validity of the comparison. An earlier version graded
+        # each variant on whatever pairs it happened to cover, which flatters
+        # any variant that drops the hard ones.
+        import os
+        import tempfile
+
+        text = " ".join([
+            "the sailor sails the ship across the wide salt sea",
+            "a hunter walks a path through a dark green forest",
+        ] * 400)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "c.txt")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(text)
+            rows = audit_tokenisation(
+                [path],
+                base=Config(vocab_size=20, min_count=1, dim=4, oversample=4),
+                block=300,
+                pair_vocab=8,
+                pair_count=20,
+            )
+        self.assertEqual([r[0] for r in rows], [l for l, _ in TOKENISATIONS])
+        for _, rho, coverage in rows:
+            self.assertGreaterEqual(rho, -1.0)
+            self.assertLessEqual(rho, 1.0)
+            self.assertGreaterEqual(coverage, 0.0)
+            self.assertLessEqual(coverage, 1.0)
+
+    def test_the_default_variant_covers_everything(self):
+        import os
+        import tempfile
+
+        text = " ".join(["the ship sails the wide salt sea"] * 500)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "c.txt")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(text)
+            rows = audit_tokenisation(
+                [path],
+                base=Config(vocab_size=20, min_count=1, dim=4, oversample=4),
+                block=300, pair_vocab=8, pair_count=20,
+            )
+        self.assertAlmostEqual(rows[0][2], 1.0, places=10)

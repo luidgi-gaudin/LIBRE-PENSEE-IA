@@ -284,3 +284,136 @@ def audit_vocabulary(
             )
         findings.append(finding)
     return findings
+
+
+TOKENISATIONS: tuple[tuple[str, dict], ...] = (
+    ("default", {}),
+    ("keep case", {"lowercase": False}),
+    ("keep accents", {"fold_accents": False}),
+    ("split clitics", {"split_clitics": True}),
+)
+
+
+def audit_tokenisation(
+    paths: list[str],
+    variants: tuple[tuple[str, dict], ...] = TOKENISATIONS,
+    base: Config | None = None,
+    block: int = 4000,
+    pair_vocab: int = 1200,
+    pair_count: int = 4000,
+    seed: int = 20260811,
+    progress=None,
+) -> list[tuple[str, float, float]]:
+    """Audit the choices made before any counting happens.
+
+    Returns `(label, spearman, coverage)` per variant.
+
+    Tokenisation resists both rulers built so far. It does not merely resize
+    the vocabulary, it changes which strings are words at all, so the
+    vocabularies are not nested and there is no shared index to lean on.
+
+    What is still shared is the *word*. So the truth table is computed once
+    from the default tokenisation, and every candidate is asked about the
+    same pairs, looked up by string rather than by position.
+
+    Scoring each variant on whatever pairs it happens to cover is not good
+    enough, and the first version of this function did exactly that. A
+    variant that drops 15% of the vocabulary is then graded on an easier
+    remainder, and "keep accents" came out ten standard deviations *ahead*
+    of the default on that basis. So the scored set is the intersection —
+    every variant answers the same questions — and coverage is reported
+    separately as the cost it is.
+
+    Keeping case is the clearest example. A cased vocabulary holds `the` and
+    `The` separately, so the vector this returns for `the` is built from
+    only the mid-sentence occurrences. That is not an unfair query; it is
+    precisely the cost of not folding.
+    """
+    base = base or Config()
+    ruler_cfg = Config(**{**base.as_dict(), **RULER})
+
+    reference_tokens: list[str] = []
+    for path in paths:
+        reference_tokens.extend(read_tokens(path))
+    train, test = split_blocks(reference_tokens, block=block)
+
+    vocab = Vocabulary.from_tokens(
+        train, max_size=base.vocab_size, min_count=base.min_count
+    )
+    truth = ppmi(
+        cooccurrence(
+            vocab.encode(test),
+            size=len(vocab),
+            window=ruler_cfg.window,
+            harmonic=ruler_cfg.harmonic,
+            min_weight=ruler_cfg.min_pair_weight,
+        ),
+        alpha=ruler_cfg.alpha,
+        shift=ruler_cfg.shift,
+    )
+
+    ceiling = min(pair_vocab, len(vocab))
+    rng = random.Random(seed)
+    pairs: set[tuple[int, int]] = set()
+    attempts = 0
+    while len(pairs) < pair_count and attempts < pair_count * 50:
+        attempts += 1
+        i, j = rng.randrange(ceiling), rng.randrange(ceiling)
+        if i == j:
+            continue
+        key = (min(i, j), max(i, j))
+        if key in pairs or not truth.rows[key[0]] or not truth.rows[key[1]]:
+            continue
+        pairs.add(key)
+    ordered = sorted(pairs)
+
+    # Pairs with no held-out evidence are unscorable for everyone.
+    evidenced = [
+        (i, j) for i, j in ordered
+        if sparse_cosine(truth.rows[i], truth.rows[j]) != 0.0
+    ]
+
+    spaces = {}
+    for label, overrides in variants:
+        if progress:
+            progress("tokenisation", label)
+        config = Config(**{**base.as_dict(), **overrides})
+        tokens: list[str] = []
+        for path in paths:
+            tokens.extend(read_tokens(
+                path,
+                lowercase=config.lowercase,
+                fold_accents=config.fold_accents,
+                split_clitics=config.split_clitics,
+            ))
+        candidate_train, _ = split_blocks(tokens, block=block)
+        spaces[label], _ = build_from_tokens(
+            candidate_train, config, verbose=False
+        )
+
+    # The common set: pairs every variant can answer. Anything else would
+    # grade different variants on different questions.
+    common = [
+        (i, j) for i, j in evidenced
+        if all(
+            vocab.words[i] in space and vocab.words[j] in space
+            for space in spaces.values()
+        )
+    ]
+
+    results = []
+    for label, _ in variants:
+        space = spaces[label]
+        covered = sum(
+            1 for i, j in evidenced
+            if vocab.words[i] in space and vocab.words[j] in space
+        )
+        predicted, actual = [], []
+        for i, j in common:
+            predicted.append(
+                space.similarity(vocab.words[i], vocab.words[j])
+            )
+            actual.append(sparse_cosine(truth.rows[i], truth.rows[j]))
+        coverage = covered / len(evidenced) if evidenced else 0.0
+        results.append((label, spearman(predicted, actual), coverage))
+    return results

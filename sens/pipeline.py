@@ -26,6 +26,9 @@ from .linalg import block_krylov_eigh, randomized_eigh
 class Config:
     """Every knob, in one place, so a build is reproducible from a dict."""
 
+    lowercase: bool = True
+    fold_accents: bool = True
+    split_clitics: bool = False
     vocab_size: int = 4000
     min_count: int = 10
     window: int = 4
@@ -93,7 +96,12 @@ def build(
     done = stage("read")
     tokens: list[str] = []
     for path in paths:
-        tokens.extend(read_tokens(path))
+        tokens.extend(read_tokens(
+            path,
+            lowercase=config.lowercase,
+            fold_accents=config.fold_accents,
+            split_clitics=config.split_clitics,
+        ))
     done(f"{len(tokens):,} tokens from {len(paths)} file(s)")
 
     done = stage("vocabulary")

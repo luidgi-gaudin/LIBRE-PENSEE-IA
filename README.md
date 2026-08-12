@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 333 tests. 40 seconds end to end.
+and an audit of every default. 351 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -695,6 +695,69 @@ every time. The target is now built in whatever space the comparison happens
 in, Euclidean scores 16.9% instead of 0%, and the conclusion is smaller and
 correct. There is a regression test.
 
+## Tokenisation: the last stage, and two defaults that lose
+
+Stage one resists both rulers built so far. It does not resize the
+vocabulary, it changes which strings are words at all, so there is no nesting
+to lean on and no shared index. What is still shared is the *word*: the truth
+table is computed once from the default tokenisation and every variant is
+asked about the same pairs, looked up by string.
+
+```
+tokenisation     held-out  coverage   vs default
+default            0.6006    100.0%
+keep case          0.5875     84.5%   3.4 sd worse
+keep accents       0.6335     97.1%   8.6 sd better
+split clitics      0.6533     97.7%  13.7 sd better
+```
+
+**Folding case is confirmed**, and on both counts: worse correlation *and*
+15% of the vocabulary lost, because a cased vocabulary holds `the` and `The`
+separately and each is built from half the evidence.
+
+The other two rows say the defaults lose, and neither has been changed.
+
+**Accent folding.** Not folding scores 8.6 sd better, which is strange,
+because not folding visibly destroys words — the token pattern is ASCII
+letters, so `Mercédès` becomes `merc`, `d`, `s`. Folding recovers 310 proper
+names from the two translated novels (`natasha`, `dantes`, `rostov`,
+`kutuzov`) that the unfolded version shatters into fragments (`nat`, `sha`,
+`rost`, `dant`).
+
+I had the obvious explanation ready — proper names are idiosyncratic
+contexts, they tell you which novel a word came from rather than what it
+means, so recovering 310 of them into the vocabulary should hurt. That
+predicts deleting those names from the default corpus recovers the gain. It
+does not: 0.5981 against 0.6002, 0.6 sd, nothing. **The explanation is wrong
+and I do not have a replacement.** The default stays as it is, because an
+unexplained gain from a transformation that demonstrably shreds real words is
+not something to adopt on one metric.
+
+**Splitting clitics.** `whale's` as two tokens scores 13.7 sd better on
+held-out. It is also linguistically defensible, and it is the more
+interesting of the two, because a second metric can just about arbitrate: the
+`possessive` benchmark category exists only *because* clitics are kept, so
+the comparison runs on the six categories that survive both.
+
+```
+                    top1    top5    form   (720 shared questions)
+default             2.9%    9.4%   17.1%
+split clitics       2.9%    8.5%   14.0%      4.0 sd worse
+```
+
+The metrics disagree, in the direction they always disagree in here.
+Splitting turns possession from a property of each noun into a word of its
+own, which helps predict similarity and costs category structure — the same
+identity-for-category trade that the compression itself makes. So the default
+stays, and the disagreement is the finding rather than an obstacle to one.
+
+**A flaw caught mid-measurement.** The first version scored each variant on
+whatever pairs it happened to cover, which grades a variant that drops 15% of
+the vocabulary on an easier remainder. `keep accents` came out 10.3 sd ahead
+that way. Scoring the intersection instead — every variant answering the same
+questions, coverage reported separately as the cost it is — brings it to 8.6.
+The conclusions held; the numbers did not.
+
 ## Auditing the rest of the defaults
 
 Finding one wrong default raised the obvious question about the ones nobody
@@ -900,7 +963,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              333 tests
+tests/              351 tests
 ```
 
 ```bash

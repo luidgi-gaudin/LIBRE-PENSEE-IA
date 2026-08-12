@@ -43,28 +43,73 @@ def strip_boilerplate(text: str) -> str:
     return text
 
 
-def normalise(text: str) -> str:
-    """Fold typography down to ASCII-ish lowercase.
+# With case preserved the token pattern has to admit capitals too.
+_TOKEN_CASED = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)*")
+
+# `whale's` -> `whale` + `'s`; `don't` -> `don` + `'t`. Splitting here is
+# what decides whether the possessive is a word of its own or a suffix
+# fused onto every noun that takes one.
+_CLITIC = re.compile(r"^(.*?)('(?:s|t|ll|re|ve|d|m))$")
+
+
+def normalise(
+    text: str, lowercase: bool = True, fold_accents: bool = True
+) -> str:
+    """Fold typography down to something regular.
 
     Curly apostrophes become straight ones first, so `don’t` and `don't`
-    are the same token rather than two strangers.
+    are the same token rather than two strangers. That much is not optional;
+    the other two are choices, and choices in this repository get measured.
     """
     text = text.replace("’", "'").replace("ʼ", "'")
-    text = unicodedata.normalize("NFKD", text)
-    text = "".join(c for c in text if not unicodedata.combining(c))
-    return text.lower()
+    if fold_accents:
+        text = unicodedata.normalize("NFKD", text)
+        text = "".join(c for c in text if not unicodedata.combining(c))
+    return text.lower() if lowercase else text
 
 
-def tokenize(text: str) -> Iterator[str]:
-    """Yield word tokens in order of appearance."""
-    for match in _TOKEN.finditer(normalise(text)):
-        yield match.group(0)
+def tokenize(
+    text: str,
+    lowercase: bool = True,
+    fold_accents: bool = True,
+    split_clitics: bool = False,
+) -> Iterator[str]:
+    """Yield word tokens in order of appearance.
+
+    `split_clitics` decides whether `whale's` is one token or two. Keeping it
+    whole is what gives this corpus a `possessive` benchmark category at all;
+    splitting it turns every possessive into the same shared `'s` token, so
+    the relation stops being a property of each word and becomes a word in
+    its own right.
+    """
+    pattern = _TOKEN if lowercase else _TOKEN_CASED
+    for match in pattern.finditer(
+        normalise(text, lowercase=lowercase, fold_accents=fold_accents)
+    ):
+        token = match.group(0)
+        if split_clitics:
+            parts = _CLITIC.match(token)
+            if parts and parts.group(1):
+                yield parts.group(1)
+                yield parts.group(2)
+                continue
+        yield token
 
 
-def read_tokens(path: str) -> list[str]:
+def read_tokens(
+    path: str,
+    lowercase: bool = True,
+    fold_accents: bool = True,
+    split_clitics: bool = False,
+) -> list[str]:
     """Read one corpus file into a token list."""
     with open(path, "r", encoding="utf-8", errors="replace") as handle:
-        return list(tokenize(strip_boilerplate(handle.read())))
+        return list(tokenize(
+            strip_boilerplate(handle.read()),
+            lowercase=lowercase,
+            fold_accents=fold_accents,
+            split_clitics=split_clitics,
+        ))
 
 
 @dataclass
