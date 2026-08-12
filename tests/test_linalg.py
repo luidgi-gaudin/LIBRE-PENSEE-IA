@@ -14,6 +14,7 @@ import unittest
 
 from sens.linalg import (
     SparseMatrix,
+    block_krylov_eigh,
     apply_right,
     cholesky,
     cross,
@@ -305,3 +306,115 @@ class TestVectorHelpers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBlockKrylov(unittest.TestCase):
+    """The Krylov variant must answer the same questions as the other one."""
+
+    def test_recovers_a_planted_spectrum(self):
+        rng = random.Random(30)
+        n = 30
+        basis = orthonormalize(
+            [[rng.gauss(0, 1) for _ in range(n)] for _ in range(n)]
+        )
+        planted = [20.0, 12.0, 7.0, 3.0] + [0.2] * (n - 4)
+        diag = [[planted[i] if i == j else 0.0 for j in range(n)]
+                for i in range(n)]
+        dense = matmul(matmul(basis, diag), transpose(basis))
+        values, _ = block_krylov_eigh(
+            dense_to_sparse(dense), k=4, block=8, depth=4,
+            rng=random.Random(31),
+        )
+        for expected, got in zip(planted[:4], values):
+            self.assertAlmostEqual(expected, got, places=5)
+
+    def test_finds_large_negative_eigenvalues_too(self):
+        rng = random.Random(32)
+        n = 24
+        basis = orthonormalize(
+            [[rng.gauss(0, 1) for _ in range(n)] for _ in range(n)]
+        )
+        planted = [15.0, -11.0, 6.0] + [0.1] * (n - 3)
+        diag = [[planted[i] if i == j else 0.0 for j in range(n)]
+                for i in range(n)]
+        dense = matmul(matmul(basis, diag), transpose(basis))
+        values, _ = block_krylov_eigh(
+            dense_to_sparse(dense), k=3, block=8, depth=3,
+            rng=random.Random(33),
+        )
+        self.assertAlmostEqual(values[0], 15.0, places=5)
+        self.assertAlmostEqual(values[1], -11.0, places=5)
+        self.assertAlmostEqual(values[2], 6.0, places=5)
+
+    def test_vectors_reconstruct_the_matrix_at_full_rank(self):
+        rng = random.Random(34)
+        n = 14
+        a = random_symmetric(n, rng)
+        values, vectors = block_krylov_eigh(
+            dense_to_sparse(a), k=n, block=7, depth=3, rng=random.Random(35),
+        )
+        diag = [[values[i] if i == j else 0.0 for j in range(n)]
+                for i in range(n)]
+        recon = matmul(matmul(vectors, diag), transpose(vectors))
+        for r_a, r_r in zip(a, recon):
+            for x, y in zip(r_a, r_r):
+                self.assertAlmostEqual(x, y, places=6)
+
+    def test_is_deterministic_for_a_fixed_seed(self):
+        rng = random.Random(36)
+        a = dense_to_sparse(random_symmetric(12, rng))
+        first = block_krylov_eigh(a, k=4, block=6, depth=3, rng=random.Random(9))
+        second = block_krylov_eigh(a, k=4, block=6, depth=3, rng=random.Random(9))
+        self.assertEqual(first[0], second[0])
+        self.assertEqual(first[1], second[1])
+
+    def test_eigenpairs_satisfy_the_defining_equation(self):
+        rng = random.Random(37)
+        n = 12
+        a = random_symmetric(n, rng)
+        values, vectors = block_krylov_eigh(
+            dense_to_sparse(a), k=n, block=6, depth=3, rng=random.Random(38),
+        )
+        for col, value in enumerate(values):
+            v = [row[col] for row in vectors]
+            av = [sum(a[i][j] * v[j] for j in range(n)) for i in range(n)]
+            for x, y in zip(av, [value * c for c in v]):
+                self.assertAlmostEqual(x, y, places=6)
+
+    def test_block_is_capped_by_matrix_size(self):
+        a = dense_to_sparse([[2.0, 0.0], [0.0, 1.0]])
+        values, vectors = block_krylov_eigh(a, k=2, block=8, depth=2)
+        self.assertEqual(len(values), 2)
+        self.assertEqual(len(vectors[0]), 2)
+
+    def test_depth_buys_accuracy_on_a_flat_spectrum(self):
+        # The mechanism the method exists for. A flat spectrum is what
+        # subspace iteration handles badly, because it separates eigenvalues
+        # by raising their ratio to a power and the ratios here are all near
+        # one. Krylov does not rely on that gap, so going deeper must help.
+        #
+        # Deliberately not a head-to-head against randomized_eigh: matching
+        # the two on work is fiddly (the basis widths differ, and so does the
+        # cost of the final projection), and an unmatched comparison would
+        # prove nothing. The real comparison is wall-clock on the actual
+        # PPMI matrix, which lives in the README.
+        rng = random.Random(39)
+        n = 40
+        basis = orthonormalize(
+            [[rng.gauss(0, 1) for _ in range(n)] for _ in range(n)]
+        )
+        planted = [10.0 - 0.1 * i for i in range(n)]
+        diag = [[planted[i] if i == j else 0.0 for j in range(n)]
+                for i in range(n)]
+        sparse = dense_to_sparse(
+            matmul(matmul(basis, diag), transpose(basis))
+        )
+
+        def error(values):
+            return max(abs(abs(a) - b) / b for a, b in zip(values, planted[:8]))
+
+        shallow, _ = block_krylov_eigh(sparse, k=8, block=6, depth=2,
+                                       rng=random.Random(40))
+        deep, _ = block_krylov_eigh(sparse, k=8, block=6, depth=5,
+                                    rng=random.Random(40))
+        self.assertLess(error(deep), error(shallow))

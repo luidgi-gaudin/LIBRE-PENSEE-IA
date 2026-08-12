@@ -19,7 +19,7 @@ from .counts import cooccurrence
 from .space import Space
 from .text import Vocabulary, read_tokens
 from .weight import ppmi
-from .linalg import randomized_eigh
+from .linalg import block_krylov_eigh, randomized_eigh
 
 
 @dataclass
@@ -34,6 +34,9 @@ class Config:
     alpha: float = 1.0
     shift: float = 1.0
     dim: int = 64
+    factoriser: str = "subspace"
+    krylov_block: int = 24
+    krylov_depth: int = 4
     oversample: int = 16
     power_iterations: int = 3
     eigenvalue_power: float = 1.0
@@ -116,13 +119,22 @@ def build(
     done(f"{matrix.nnz:,} positive, {kept:.1%} of pairs")
 
     done = stage("factorise")
-    values, vectors = randomized_eigh(
-        matrix,
-        k=config.dim,
-        oversample=config.oversample,
-        power_iterations=config.power_iterations,
-        rng=random.Random(config.seed),
-    )
+    if config.factoriser == "krylov":
+        values, vectors = block_krylov_eigh(
+            matrix,
+            k=config.dim,
+            block=config.krylov_block,
+            depth=config.krylov_depth,
+            rng=random.Random(config.seed),
+        )
+    else:
+        values, vectors = randomized_eigh(
+            matrix,
+            k=config.dim,
+            oversample=config.oversample,
+            power_iterations=config.power_iterations,
+            rng=random.Random(config.seed),
+        )
     spread = abs(values[0]) / max(abs(values[-1]), 1e-12)
     done(f"{config.dim} dims, eigenvalue spread {spread:6.1f}x")
 

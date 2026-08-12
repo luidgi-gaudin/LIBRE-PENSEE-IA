@@ -281,6 +281,73 @@ def randomized_eigh(
     return kept_values, apply_right(q, kept_vectors)
 
 
+def _concat(blocks: list[Dense]) -> Dense:
+    """Glue blocks together side by side into one wide matrix."""
+    return [
+        [value for block in blocks for value in block[row]]
+        for row in range(len(blocks[0]))
+    ]
+
+
+def block_krylov_eigh(
+    matrix: SparseMatrix,
+    k: int,
+    block: int = 24,
+    depth: int = 4,
+    rng: random.Random | None = None,
+):
+    """Approximate the `k` dominant eigenpairs, keeping every iterate.
+
+    Same shape of answer as `randomized_eigh`, and better at getting it, for
+    the reason that method struggles: subspace iteration computes
+    `A, A^2, ..., A^q` applied to a random block and then throws all of them
+    away except the last. Everything it discarded was information about the
+    matrix. Keeping the whole sequence
+
+        K = [ A W , A^2 W , ... , A^q W ]
+
+    and searching that span instead is the block Krylov method, and it costs
+    the same matrix multiplications.
+
+    The difference shows up precisely where a PPMI matrix lives. Subspace
+    iteration separates eigenvalues by raising their ratio to a power, so it
+    works well when the spectrum drops off sharply and badly when it is flat.
+    A Krylov space does not rely on that gap: it can represent any polynomial
+    in `A` applied to the starting block, and the best polynomial for
+    isolating a flat cluster is much better than `x^q`.
+
+    Cost is set by the width of the basis, `block * depth`, so a narrow block
+    taken deep buys accuracy that a wide block taken shallow cannot.
+    """
+    rng = rng or random.Random(0)
+    n = matrix.n
+    block = min(block, n)
+
+    blocks: list[Dense] = []
+    y = gaussian(n, block, rng)
+    for _ in range(depth):
+        # Orthonormalising between steps is not optional. Without it every
+        # block collapses toward the dominant eigenvector in floating point
+        # and the later ones carry no independent information.
+        y = orthonormalize(matrix.dot_dense(y))
+        blocks.append(y)
+
+    q = orthonormalize(_concat(blocks))
+    aq = matrix.dot_dense(q)
+    small = cross(q, aq)
+    size = len(small)
+    small = [
+        [(small[i][j] + small[j][i]) * 0.5 for j in range(size)]
+        for i in range(size)
+    ]
+
+    values, vectors = jacobi_eigh(small)
+    order = sorted(range(len(values)), key=lambda i: -abs(values[i]))[:k]
+    kept_values = [values[i] for i in order]
+    kept_vectors = [[row[i] for i in order] for row in vectors]
+    return kept_values, apply_right(q, kept_vectors)
+
+
 # --------------------------------------------------------------------------
 # vectors
 # --------------------------------------------------------------------------

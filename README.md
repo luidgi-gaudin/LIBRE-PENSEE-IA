@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 260 tests. 40 seconds end to end.
+and an audit of every default. 267 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -434,6 +434,52 @@ is that this factorisation is accurate enough for the geometry and not
 accurate enough for its own spectrum. A PPMI matrix has a slowly decaying
 spectrum, and a randomised method separates a flat tail poorly.
 
+## A better factorisation that made a worse model
+
+The accuracy numbers above are bad enough to be worth fixing, and there is a
+standard fix. Subspace iteration computes `A W, A²W, ..., A^qW` and then
+throws all of them away except the last. Everything discarded was information
+about the matrix. Keeping the whole sequence and searching that span instead
+is the block Krylov method, and it costs the same multiplications.
+
+It works exactly as advertised. `linalg.block_krylov_eigh` is **39% faster**
+and roughly twice as accurate on eigenvalue magnitudes:
+
+```
+method                          time    mean err   worst
+subspace: over 16, iters 3     36.7s      0.3515  0.7647
+subspace: over 32, iters 6     80.6s      0.1075  0.3969
+krylov:   block 24, depth 4    19.5s      0.1753  0.3434
+krylov:   block 20, depth 6    27.7s      0.0881  0.2084
+```
+
+**And it makes the model worse.** Swapped in as the default, analogy form
+fell from 22.6% to 17.7%, top-5 from 13.1% to 10.1%, and the `sea`/`land`
+axis — 14 of 14 correct for the whole life of this repository — started
+putting `forest`, `door` and `road` on the wrong side. Re-tuning the
+eigenvalue exponent for it does not recover the loss; the best it reaches at
+power 1.5 is 19.2% form.
+
+The mechanism is visible in one number. Eigenvalue spread falls from 28.4× to
+9.7× when the factorisation gets accurate, because the tail eigenvalues are
+no longer being underestimated. But those tail directions are largely noise —
+we already know their *signs* are near chance — and the exponent then weights
+them at their true, larger magnitude. Subspace iteration's error is not
+random error; it is systematically biased against the poorly determined tail,
+and that bias was doing useful work. **The inaccuracy was a regulariser.**
+
+So the default stays on subspace iteration, and `factoriser="krylov"` is
+there for anyone who wants 39% off the build time and can spend the quality.
+The finding is the point rather than the code: on this problem, a more
+faithful decomposition of the matrix is a less useful description of the
+language, and there was no way to know that without measuring the model
+rather than the mathematics.
+
+It also explains something that looked odd earlier — why held-out quality
+barely moved across power-iteration counts while eigenvalue error moved by a
+factor of three. Accuracy in the spectrum and quality in the geometry are
+close to unrelated here.
+
 ## Auditing the rest of the defaults
 
 Finding one wrong default raised the obvious question about the ones nobody
@@ -569,7 +615,7 @@ find syntax, wide windows find topic. There is no setting that finds
 sens/text.py        tokenising, vocabulary
 sens/counts.py      the sliding window
 sens/weight.py      PPMI
-sens/linalg.py      sparse matvec, CholeskyQR, Jacobi, randomised range finder
+sens/linalg.py      sparse matvec, CholeskyQR, Jacobi, range finder, block Krylov
 sens/space.py       cosine, neighbours, analogy, axis, reweighting, ablation
 sens/pipeline.py    the five stages, end to end
 sens/evaluate.py    a benchmark generated from the vocabulary itself
@@ -579,7 +625,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              260 tests
+tests/              267 tests
 ```
 
 ```bash
