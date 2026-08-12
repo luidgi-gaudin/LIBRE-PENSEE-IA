@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 358 tests. 40 seconds end to end.
+and an audit of every default. 364 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -22,6 +22,68 @@ $ python -m sens fetch && python -m sens build
 
 $ python -m sens demo
 ```
+
+## Everything measured, in one table
+
+Twelve rounds of measurement, with the effect sizes and whether they held up
+on a [second corpus](#does-any-of-it-generalise). Held-out figures are
+Spearman differences against a noise floor of 0.0076; analogy figures are
+form-rate differences against a floor of 1.6%. Each row links to the section
+that produced it.
+
+| what was tested | novels | expository | verdict |
+| --- | --- | --- | --- |
+| [PPMI vs raw counts](#is-the-surprise-step-worth-anything) | +0.376 · 98 sd | +0.461 · 178 sd | holds |
+| [PPMI vs log counts](#is-the-surprise-step-worth-anything) | +0.264 · 69 sd | +0.260 · 100 sd | holds |
+| [clipping: PPMI vs PMI](#is-the-surprise-step-worth-anything) | +0.077 · 20 sd | +0.073 · 28 sd | holds |
+| [cosine vs dot product](#is-cosine-the-right-question-to-ask) | +20.2 pts · 26 sd | dot collapses | holds |
+| [cosine vs Euclidean](#is-cosine-the-right-question-to-ask) | +5.7 pts · 7.5 sd | +4.0 pts · p 0.006 | holds |
+| [1/distance vs flat window](#auditing-the-rest-of-the-defaults) | +0.101 · 26 sd | +0.088 · 34 sd | holds |
+| [exponent 1.0 vs 0.5](#being-wrong-about-a-default) | +0.093 · 24 sd | +0.119 · 46 sd | holds |
+| [pruning: min weight 1 vs 0](#auditing-the-rest-of-the-defaults) | +0.074 · 19 sd | +0.060 · 23 sd | holds |
+| [shift 1 vs 2](#auditing-the-rest-of-the-defaults) | +0.063 · 16 sd | +0.042 · 16 sd | holds |
+| [lowercasing vs keeping case](#tokenisation-the-last-stage-and-two-defaults-that-lose) | +0.013 · 3.4 sd, and 15% more vocabulary | not run | holds |
+| [magnitude vs sign ranking](#ranking-by-magnitude-earns-its-place-the-negatives-do-not) | +2.4 pts top-1; 0 of 12 random draws matched | not run | holds |
+| [smoothing: alpha 1.0 vs 0.75](#auditing-the-rest-of-the-defaults) | +0.009 · 2.4 sd | same direction | marginal |
+| [vocabulary 8000 vs 4000](#the-two-that-needed-a-different-ruler) | +0.008 · 2.1 sd | not run | marginal |
+| [window 4 vs 2](#auditing-the-rest-of-the-defaults) | +0.008 · 2.0 sd | not run | marginal |
+| [window 4 vs 6](#auditing-the-rest-of-the-defaults) | +0.001 · 0.3 sd | not run | **no effect** |
+| [min\_count 5 vs 20](#the-two-that-needed-a-different-ruler) | 0.002 · 0.5 sd | not run | **no effect** |
+| [3CosMul vs 3CosAdd](#morphological-analogy) | −0.001 · 0.4 sd | not run | **no effect** |
+| [accurate factorisation (Krylov)](#a-better-factorisation-that-made-a-worse-model) | −4.9 pts · 6 sd, 39% faster | not run | **backwards** |
+| [compression trades identity for category](#does-compression-add-anything) | +5.3 pts · p 0.004 | −5.3 pts · p 0.008 | **refuted** |
+| [64 dims beat 160 on category](#how-many-dimensions-and-the-trade-seen-directly) | p 0.034 | p 0.91 | **refuted** |
+
+Seven of the ten large effects replicate on a corpus with nothing in common
+but the language. Three parameters everyone tunes turn out to do nothing
+measurable. One improvement made the model worse. And the two rows this
+repository once led with are the two that did not survive.
+
+### Things this README claimed and then withdrew
+
+Kept in place rather than edited away, because the corrections are the most
+useful part.
+
+1. **"The factorisation is what creates meaning."** Rhetoric. The
+   [uncompressed control](#does-compression-add-anything) beats it on
+   retrieval and on similarity alike.
+2. **"Compression trades identity for category."** Reached by three
+   independent routes, all measuring the same six novels.
+   [Refuted](#does-any-of-it-generalise) on the second corpus.
+3. **"The negative eigenvalues carry signal."** Real effect, wrong cause —
+   [a random subset of the same size does better](#ranking-by-magnitude-earns-its-place-the-negatives-do-not)
+   than the positive-only one.
+4. **"The analogy benchmark independently confirms the alpha change."** At
+   0.8 sd it [confirms nothing](#auditing-the-rest-of-the-defaults).
+5. **"vocab\_size and min\_count cannot be audited."** They
+   [can](#the-two-that-needed-a-different-ruler), using the nesting property.
+6. **The `possessive` category** was mostly contractions. Renamed
+   `apostrophe-s`.
+
+Four separate explanations were also proposed and then killed by their own
+tests: the vocabulary-cap story for smoothing, the proper-noun story for
+accent folding, the spectral-flatness story for the non-replication, and the
+magnitude story for shrinkage.
 
 ## What it produces
 
@@ -1085,7 +1147,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              358 tests
+tests/              364 tests
 ```
 
 ```bash
