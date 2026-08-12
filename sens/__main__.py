@@ -12,6 +12,7 @@
     python -m sens baseline
     python -m sens audit
     python -m sens dimensions
+    python -m sens subspaces
     python -m sens demo
     python -m sens info
 """
@@ -433,6 +434,27 @@ def cmd_dimensions(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_subspaces(args: argparse.Namespace) -> int:
+    """Do the two factorisations disagree about scale, or about direction?"""
+    from .pipeline import Config, build
+
+    works = corpus.available()
+    if not works:
+        sys.exit("no corpus files found; run `python -m sens fetch`")
+    paths = [w.path for w in works]
+
+    print("building both factorisations of the same matrix", file=sys.stderr)
+    left, _ = build(paths, Config(factoriser="subspace"), verbose=False)
+    right, _ = build(paths, Config(factoriser="krylov"), verbose=False)
+
+    print("\nprincipal angles, subspace iteration against block Krylov")
+    print("cosine 1.0 = the two spaces share that direction exactly\n")
+    print("  " + experiments.overlap_header())
+    for overlap in experiments.compare_subspaces(left, right):
+        print("  " + overlap.row)
+    return 0
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     space = _load(args.space)
     meta = space.meta
@@ -539,6 +561,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--limit", type=int, default=60)
     p.add_argument("--seed", type=int, default=20260811)
     p.set_defaults(func=cmd_dimensions)
+
+    p = sub.add_parser(
+        "subspaces", help="do two factorisations find the same directions?"
+    )
+    p.set_defaults(func=cmd_subspaces)
 
     p = sub.add_parser("demo", help="a guided tour of the results")
     p.set_defaults(func=cmd_demo)

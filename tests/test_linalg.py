@@ -22,6 +22,7 @@ from sens.linalg import (
     invert_lower,
     jacobi_eigh,
     orthonormalize,
+    principal_angles,
     randomized_eigh,
     unit,
 )
@@ -418,3 +419,72 @@ class TestBlockKrylov(unittest.TestCase):
         deep, _ = block_krylov_eigh(sparse, k=8, block=6, depth=5,
                                     rng=random.Random(40))
         self.assertLess(error(deep), error(shallow))
+
+
+class TestPrincipalAngles(unittest.TestCase):
+    """Whether two bases disagree about scale or about direction."""
+
+    def test_identical_subspaces_share_everything(self):
+        rng = random.Random(50)
+        a = [[rng.gauss(0, 1) for _ in range(3)] for _ in range(10)]
+        for cosine in principal_angles(a, [row[:] for row in a]):
+            self.assertAlmostEqual(cosine, 1.0, places=8)
+
+    def test_a_rescaled_basis_is_the_same_subspace(self):
+        # The whole point of the measurement: reweighting the columns cannot
+        # change what they span, so this must come back all ones.
+        rng = random.Random(51)
+        a = [[rng.gauss(0, 1) for _ in range(3)] for _ in range(10)]
+        scaled = [[v * s for v, s in zip(row, (5.0, 0.1, 20.0))] for row in a]
+        for cosine in principal_angles(a, scaled):
+            self.assertAlmostEqual(cosine, 1.0, places=8)
+
+    def test_a_rotated_basis_is_the_same_subspace(self):
+        rng = random.Random(52)
+        a = [[rng.gauss(0, 1) for _ in range(2)] for _ in range(8)]
+        rotated = [[row[0] + row[1], row[0] - row[1]] for row in a]
+        for cosine in principal_angles(a, rotated):
+            self.assertAlmostEqual(cosine, 1.0, places=8)
+
+    def test_orthogonal_subspaces_share_nothing(self):
+        a = [[1.0, 0.0], [0.0, 1.0], [0.0, 0.0], [0.0, 0.0]]
+        b = [[0.0, 0.0], [0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]
+        for cosine in principal_angles(a, b):
+            self.assertAlmostEqual(cosine, 0.0, places=8)
+
+    def test_partial_overlap_is_reported_per_direction(self):
+        # One axis shared, one orthogonal: cosines must be 1 and 0, not an
+        # average of the two.
+        a = [[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]]
+        b = [[1.0, 0.0], [0.0, 0.0], [0.0, 1.0]]
+        cosines = principal_angles(a, b)
+        self.assertAlmostEqual(cosines[0], 1.0, places=8)
+        self.assertAlmostEqual(cosines[1], 0.0, places=8)
+
+    def test_a_known_angle(self):
+        # Two lines in the plane at 60 degrees; the cosine must be 0.5.
+        a = [[1.0], [0.0]]
+        b = [[0.5], [math.sqrt(3) / 2]]
+        self.assertAlmostEqual(principal_angles(a, b)[0], 0.5, places=8)
+
+    def test_cosines_come_back_sorted(self):
+        rng = random.Random(53)
+        a = [[rng.gauss(0, 1) for _ in range(4)] for _ in range(12)]
+        b = [[rng.gauss(0, 1) for _ in range(4)] for _ in range(12)]
+        cosines = principal_angles(a, b)
+        self.assertEqual(cosines, sorted(cosines, reverse=True))
+
+    def test_cosines_stay_within_range(self):
+        rng = random.Random(54)
+        a = [[rng.gauss(0, 1) for _ in range(5)] for _ in range(9)]
+        b = [[rng.gauss(0, 1) for _ in range(5)] for _ in range(9)]
+        for cosine in principal_angles(a, b):
+            self.assertGreaterEqual(cosine, 0.0)
+            self.assertLessEqual(cosine, 1.0)
+
+    def test_it_is_symmetric(self):
+        rng = random.Random(55)
+        a = [[rng.gauss(0, 1) for _ in range(3)] for _ in range(9)]
+        b = [[rng.gauss(0, 1) for _ in range(3)] for _ in range(9)]
+        for x, y in zip(principal_angles(a, b), principal_angles(b, a)):
+            self.assertAlmostEqual(x, y, places=8)

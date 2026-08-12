@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 276 tests. 40 seconds end to end.
+and an audit of every default. 285 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -499,9 +499,30 @@ top-5, and there is no threshold at which Krylov wins on both metrics at
 once. At shrinkage 10 it beats the default on held-out — 0.6096 against
 0.6002, at 39% less build time — and loses on form. **So the accidental
 regularisation is not purely a matter of magnitude.** If it were, rescaling
-would reproduce it exactly. Subspace iteration also lands in a *different
-subspace*, one biased toward well-determined directions, and no reweighting
-of a noisy axis turns it into a useful one.
+would reproduce it exactly.
+
+That was a guess when I first wrote it, and guesses in this README have a
+poor record, so `python -m sens subspaces` measures it. Principal angles
+between the two factorisations of the same matrix — cosine 1.0 means the two
+spaces share that direction exactly:
+
+```
+slice          mean       min    >0.99
+all 64       0.5118    0.0015    7/64
+top 16       0.8841    0.0100    6/16
+mid 16       0.2452    0.0133    0/16
+tail 16      0.1246    0.0080    0/16
+```
+
+The guess holds. The two methods do not merely weight the same directions
+differently — past the leading handful they are not finding the same
+directions at all. They broadly agree about the strongest sixteen (mean
+cosine 0.88) and are close to orthogonal by the tail (0.12). Only seven of
+sixty-four directions are shared to better than 0.99.
+
+Which is why shrinkage could never have closed the gap. You cannot rescale
+your way from one subspace into another, and no reweighting of a noisy axis
+turns it into a useful one.
 
 The default therefore stays on subspace iteration, because category structure
 is the property this repository has spent its length arguing is the
@@ -625,6 +646,7 @@ python -m sens baseline                 # compare against no compression
 python -m sens sweep                    # exponent sweep and sign ablation
 python -m sens audit                    # every default, fixed ruler (slow)
 python -m sens dimensions               # how many dimensions (slow)
+python -m sens subspaces                # do two factorisations agree?
 python -m sens neighbors whale ship happiness
 python -m sens analogy father mother son
 python -m sens similarity ship boat garden
@@ -661,7 +683,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              276 tests
+tests/              285 tests
 ```
 
 ```bash

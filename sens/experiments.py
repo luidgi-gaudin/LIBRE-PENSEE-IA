@@ -19,6 +19,7 @@ import random
 from dataclasses import dataclass
 
 from .evaluate import Score, evaluate, totals
+from .linalg import principal_angles
 from .space import Space
 
 DEFAULT_POWERS = (0.0, 0.25, 0.5, 0.75, 1.0)
@@ -222,3 +223,68 @@ def dimension_header() -> str:
 
 def header() -> str:
     return f"{'configuration':<22} {'dims':>4}  {'top1':>6}  {'top5':>6}  {'form':>6}"
+
+
+@dataclass
+class Overlap:
+    """How much two factorisations of the same matrix actually agree."""
+
+    label: str
+    cosines: list[float]
+
+    @property
+    def mean(self) -> float:
+        return sum(self.cosines) / len(self.cosines) if self.cosines else 0.0
+
+    @property
+    def aligned(self) -> int:
+        """Directions the two spaces share almost exactly."""
+        return sum(1 for c in self.cosines if c > 0.99)
+
+    @property
+    def row(self) -> str:
+        smallest = min(self.cosines) if self.cosines else 0.0
+        return (
+            f"{self.label:<10} {self.mean:8.4f}  {smallest:8.4f}  "
+            f"{self.aligned:3}/{len(self.cosines):<3}"
+        )
+
+
+def compare_subspaces(
+    left: Space,
+    right: Space,
+    slices: tuple[tuple[str, int, int], ...] = (
+        ("all 64", 0, 64),
+        ("top 16", 0, 16),
+        ("mid 16", 24, 40),
+        ("tail 16", 48, 64),
+    ),
+) -> list[Overlap]:
+    """Principal angles between two spaces, whole and in slices.
+
+    Slicing matters because the disagreement is not spread evenly. Two
+    factorisations settle the strongest directions and argue about the rest,
+    so a single overall number would average a real agreement at the top
+    together with near-orthogonality at the bottom and report something true
+    of neither.
+    """
+    results = []
+    for label, start, stop in slices:
+        stop = min(stop, left.dim, right.dim)
+        if start >= stop:
+            continue
+        columns = list(range(start, stop))
+        results.append(
+            Overlap(
+                label=label,
+                cosines=principal_angles(
+                    [[row[i] for i in columns] for row in left.vectors],
+                    [[row[i] for i in columns] for row in right.vectors],
+                ),
+            )
+        )
+    return results
+
+
+def overlap_header() -> str:
+    return f"{'slice':<10} {'mean':>8}  {'min':>8}  {'>0.99':>7}"

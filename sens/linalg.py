@@ -281,6 +281,34 @@ def randomized_eigh(
     return kept_values, apply_right(q, kept_vectors)
 
 
+def principal_angles(a: Dense, b: Dense) -> list[float]:
+    """Cosines of the principal angles between two subspaces.
+
+    Given two matrices with the same number of rows, this asks how much the
+    spaces their columns span have in common. The answer is a list of
+    cosines, largest first: a 1.0 is a direction the two spaces share
+    exactly, a 0.0 is a direction in one that is orthogonal to all of the
+    other.
+
+    It exists here to settle a question a rescaling cannot answer. Two
+    factorisations of the same matrix can disagree either about how much
+    each direction matters — which any reweighting could fix — or about what
+    the directions *are*, which no reweighting can. Comparing eigenvalues
+    tells you the first. Only this tells you the second.
+
+    The construction is the standard one: orthonormalise both bases, and the
+    singular values of `Q1.T Q2` are the cosines. Singular values come from
+    the eigenvalues of its Gram matrix, which is small.
+    """
+    q1 = orthonormalize(a)
+    q2 = orthonormalize(b)
+    m = cross(q1, q2)
+    values, _ = jacobi_eigh(gram(m))
+    # Rounding can push a cosine a hair past one; clamp so the caller can
+    # take an arccos without it raising.
+    return [math.sqrt(min(1.0, max(0.0, v))) for v in values]
+
+
 def _concat(blocks: list[Dense]) -> Dense:
     """Glue blocks together side by side into one wide matrix."""
     return [
