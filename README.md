@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 364 tests. 40 seconds end to end.
+and an audit of every default. 383 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -22,6 +22,59 @@ $ python -m sens fetch && python -m sens build
 
 $ python -m sens demo
 ```
+
+## The register
+
+The most useful thing this repository has produced is not a finding. It is a
+withdrawal rate: six claims retracted, six explanations killed by their own
+tests. Every one was caught by a control — a noise floor, a random baseline,
+a dimension match, a second corpus — and every one of those controls had to
+be *thought of* at the time, by someone who had just finished being pleased
+with a result.
+
+That is the weak link, and it is not fixable by trying harder. A claim made
+carelessly and a claim made carefully look identical once both are prose.
+
+So the claims are no longer prose. `sens/claims.py` holds each one as a
+record: its effect size, the noise floor it was judged against, the controls
+actually applied, and what became of it. `python -m sens claims --audit`
+then asks the question mechanically, for all of them, including the ones
+nobody is currently thinking about:
+
+```
+$ python -m sens claims --audit
+claims stated with more confidence than their controls support
+  lowercasing                  holds      missing: second-corpus
+  magnitude-ranking            holds      missing: second-corpus
+  accurate-factorisation       backwards  missing: second-corpus
+```
+
+**It found three on its first run, and one of them was wrong.** Saying a
+thing *holds* is a claim about the method; showing it on one corpus is a
+claim about one corpus, and this repository has already confused those once
+at considerable cost. So `holds` now requires replication, and the three
+flagged claims were measured rather than reworded:
+
+- **lowercasing** replicated — +0.0137 on expository against +0.0131 on the
+  novels, 5.3 sd against the local floor.
+- **magnitude-ranking** replicated, including the awkward half: sign-based
+  selection loses to *random* selection on both corpora, 12.5% against 13.5%.
+- **accurate-factorisation did not.** The finding that a better factorisation
+  makes a worse model is 6 sd on the novels and, on a paired test over 720
+  expository questions, p = 0.87. No effect. It has moved from `backwards` to
+  `refuted`, and Krylov is simply 39% faster and no worse there.
+
+An earlier version of the requirements table asked only for a noise floor
+and reported that every claim was fine. That answer was useless — the
+compression claim had a noise floor, three agreeing measurements and one
+corpus, and it passed. A register that cannot embarrass its author is
+decoration.
+
+Nineteen tests hold it to that. A claim cannot be marked `holds` without
+replication, a refutation cannot be recorded without a paired test, a claim
+carrying the second-corpus control must actually say what the second corpus
+showed, and the unexplained result cannot be quietly deleted instead of
+solved.
 
 ## Everything measured, in one table
 
@@ -42,22 +95,22 @@ that produced it.
 | [exponent 1.0 vs 0.5](#being-wrong-about-a-default) | +0.093 · 24 sd | +0.119 · 46 sd | holds |
 | [pruning: min weight 1 vs 0](#auditing-the-rest-of-the-defaults) | +0.074 · 19 sd | +0.060 · 23 sd | holds |
 | [shift 1 vs 2](#auditing-the-rest-of-the-defaults) | +0.063 · 16 sd | +0.042 · 16 sd | holds |
-| [lowercasing vs keeping case](#tokenisation-the-last-stage-and-two-defaults-that-lose) | +0.013 · 3.4 sd, and 15% more vocabulary | not run | holds |
-| [magnitude vs sign ranking](#ranking-by-magnitude-earns-its-place-the-negatives-do-not) | +2.4 pts top-1; 0 of 12 random draws matched | not run | holds |
+| [lowercasing vs keeping case](#tokenisation-the-last-stage-and-two-defaults-that-lose) | +0.013 · 3.4 sd, and 15% more vocabulary | +0.014 · 5.3 sd | holds |
+| [magnitude vs sign ranking](#ranking-by-magnitude-earns-its-place-the-negatives-do-not) | +2.4 pts top-1; 0 of 12 random draws matched | 16.9% vs 13.5% random | holds |
 | [smoothing: alpha 1.0 vs 0.75](#auditing-the-rest-of-the-defaults) | +0.009 · 2.4 sd | same direction | marginal |
 | [vocabulary 8000 vs 4000](#the-two-that-needed-a-different-ruler) | +0.008 · 2.1 sd | not run | marginal |
 | [window 4 vs 2](#auditing-the-rest-of-the-defaults) | +0.008 · 2.0 sd | not run | marginal |
 | [window 4 vs 6](#auditing-the-rest-of-the-defaults) | +0.001 · 0.3 sd | not run | **no effect** |
 | [min\_count 5 vs 20](#the-two-that-needed-a-different-ruler) | 0.002 · 0.5 sd | not run | **no effect** |
 | [3CosMul vs 3CosAdd](#morphological-analogy) | −0.001 · 0.4 sd | not run | **no effect** |
-| [accurate factorisation (Krylov)](#a-better-factorisation-that-made-a-worse-model) | −4.9 pts · 6 sd, 39% faster | not run | **backwards** |
+| [accurate factorisation (Krylov)](#a-better-factorisation-that-made-a-worse-model) | −4.9 pts · 6 sd, 39% faster | +0.4 pts · p 0.87 | **refuted** |
 | [compression trades identity for category](#does-compression-add-anything) | +5.3 pts · p 0.004 | −5.3 pts · p 0.008 | **refuted** |
 | [64 dims beat 160 on category](#how-many-dimensions-and-the-trade-seen-directly) | p 0.034 | p 0.91 | **refuted** |
 
-Seven of the ten large effects replicate on a corpus with nothing in common
-but the language. Three parameters everyone tunes turn out to do nothing
-measurable. One improvement made the model worse. And the two rows this
-repository once led with are the two that did not survive.
+Nine of the eleven large effects replicate on a corpus with nothing in
+common but the language. Three parameters everyone tunes turn out to do
+nothing measurable. And three rows did not survive replication, including
+the two this repository once led with.
 
 ### Things this README claimed and then withdrew
 
@@ -1215,7 +1268,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              364 tests
+tests/              383 tests
 ```
 
 ```bash

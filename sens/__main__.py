@@ -14,6 +14,7 @@
     python -m sens dimensions
     python -m sens subspaces
     python -m sens noise
+    python -m sens claims
     python -m sens demo
     python -m sens info
 """
@@ -31,6 +32,7 @@ from . import heldout as heldout_mod
 from . import baseline as baseline_mod
 from . import audit as audit_mod
 from . import noise as noise_mod
+from . import claims as claims_mod
 from .pipeline import Config, build
 from .space import Space
 
@@ -492,6 +494,43 @@ def cmd_noise(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_claims(args: argparse.Namespace) -> int:
+    """Every claim this repository makes, and what it is entitled to."""
+    register = claims_mod.REGISTER
+    if args.audit:
+        weak = claims_mod.unentitled()
+        thin = claims_mod.unreplicated()
+        print("claims stated with more confidence than their controls support")
+        if weak:
+            for claim in weak:
+                missing = ", ".join(sorted(claim.missing))
+                print(f"  {claim.id:<28} {claim.status:<10} missing: {missing}")
+        else:
+            print("  none — every status has the controls it requires")
+        print(f"\nclaims measured on only one corpus ({len(thin)} of "
+              f"{len(register)})")
+        for claim in thin:
+            print(f"  {claim.id:<28} {claim.status}")
+        print("\ncontrols and what each rules out")
+        for name in sorted(claims_mod.CONTROLS):
+            used = sum(1 for c in register if name in c.controls)
+            print(f"  {name:<18} {used:2}/{len(register)}  "
+                  f"{claims_mod.CONTROLS[name]}")
+        return 0
+
+    for status in claims_mod.STATUSES:
+        group = claims_mod.by_status(status)
+        if not group:
+            continue
+        print(f"\n{status.upper()}  ({len(group)})")
+        print("  " + claims_mod.header())
+        for claim in group:
+            print("  " + claims_mod.row(claim))
+    replicated = sum(1 for c in register if c.replicated)
+    print(f"\n{len(register)} claims, {replicated} checked on a second corpus")
+    return 0
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     space = _load(args.space)
     meta = space.meta
@@ -616,6 +655,13 @@ def main(argv: list[str] | None = None) -> int:
                    default=list(noise_mod.DEFAULT_SEEDS))
     p.add_argument("--limit", type=int, default=120)
     p.set_defaults(func=cmd_noise)
+
+    p = sub.add_parser(
+        "claims", help="every claim made here, and what supports it"
+    )
+    p.add_argument("--audit", action="store_true",
+                   help="report claims whose controls do not match their status")
+    p.set_defaults(func=cmd_claims)
 
     p = sub.add_parser("demo", help="a guided tour of the results")
     p.set_defaults(func=cmd_demo)
