@@ -9,6 +9,7 @@
     python -m sens evaluate
     python -m sens sweep
     python -m sens heldout
+    python -m sens baseline
     python -m sens demo
     python -m sens info
 """
@@ -23,6 +24,7 @@ from . import corpus
 from . import evaluate as evaluate_mod
 from . import experiments
 from . import heldout as heldout_mod
+from . import baseline as baseline_mod
 from .pipeline import Config, build
 from .space import Space
 
@@ -293,6 +295,69 @@ def cmd_heldout(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_baseline(args: argparse.Namespace) -> int:
+    """Compare the compressed space against not compressing at all."""
+    from .counts import cooccurrence
+    from .evaluate import build_benchmark
+    from .heldout import split_blocks
+    from .pipeline import Config
+    from .text import read_tokens
+    from .weight import ppmi
+
+    works = corpus.available()
+    if not works:
+        sys.exit("no corpus files found; run `python -m sens fetch`")
+    paths = [w.path for w in works]
+    config = Config()
+
+    print("building both representations on the same half-corpus",
+          file=sys.stderr)
+    prepared = heldout_mod.prepare(
+        paths, config=config, seed=args.seed, verbose=True
+    )
+
+    tokens = []
+    for path in paths:
+        tokens.extend(read_tokens(path))
+    train, _ = split_blocks(tokens)
+    raw = ppmi(
+        cooccurrence(
+            prepared.vocab.encode(train),
+            size=len(prepared.vocab),
+            window=config.window,
+            harmonic=config.harmonic,
+            min_weight=config.min_pair_weight,
+        ),
+        alpha=config.alpha,
+        shift=config.shift,
+    )
+    sparse = baseline_mod.SparseSpace(list(prepared.space.words), raw)
+
+    result = baseline_mod.compare(
+        prepared.space,
+        sparse,
+        build_benchmark(prepared.space),
+        limit=args.limit,
+        seed=args.seed,
+    )
+
+    print(f"\n{result.dense.asked} paired questions\n")
+    print("  " + baseline_mod.header())
+    print("  " + result.sparse.row)
+    print("  " + result.dense.row)
+
+    print("\npaired significance (McNemar, disagreements only)")
+    for metric in ("top1", "top5", "form"):
+        sparse_only, dense_only, p = result.significance(metric)
+        winner = "raw" if sparse_only > dense_only else "compressed"
+        verdict = f"{winner} wins" if p < 0.05 else "no difference"
+        print(
+            f"  {metric:<5} raw-only={sparse_only:<4} "
+            f"compressed-only={dense_only:<4} p={p:.4f}   {verdict}"
+        )
+    return 0
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     space = _load(args.space)
     meta = space.meta
@@ -377,6 +442,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--powers", type=float, nargs="+",
                    default=list(DEFAULT_HELDOUT_POWERS))
     p.set_defaults(func=cmd_heldout)
+
+    p = sub.add_parser(
+        "baseline", help="compare against not compressing at all"
+    )
+    p.add_argument("--limit", type=int, default=120)
+    p.add_argument("--seed", type=int, default=20260811)
+    p.set_defaults(func=cmd_baseline)
 
     p = sub.add_parser("demo", help="a guided tour of the results")
     p.set_defaults(func=cmd_demo)

@@ -8,8 +8,9 @@ lands on `her`, and where the line from `sea` to `land` sorts `harpoon` from
 Pure Python. No NumPy, no SciPy, no dependencies of any kind. Every
 multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
-corpus fetcher, and two independent ways of measuring whether any of it
-works. 203 tests. 42 seconds end to end.
+corpus fetcher, and three independent ways of measuring whether any of it
+works — including a control that compares it against not compressing at all.
+232 tests. 42 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -105,15 +106,20 @@ Clipping throws away a real signal to avoid a much larger imaginary one.
 4,000 × 64 by truncated SVD — implemented here as a randomised range finder
 plus Jacobi rotations, both by hand, in `linalg.py`.
 
-**This is the step that creates meaning, and it does so by destroying
-information.** Before it, every word is a 4,000-long list of the specific
-words it happened to appear near — a record, precise and useless. `sea` and
-`ocean` share almost none of those entries, because a sentence that needs one
-does not then need the other. Force all 4,000 words to share 64 axes and
+**This is the step that trades identity for category.** Before it, every word
+is a 4,000-long list of the specific words it happened to appear near — a
+record, precise and expensive. Force all 4,000 words to share 64 axes and
 precision becomes unaffordable. The only way to fit is to spend dimensions on
 regularities that pay off across many words at once, and *being the sort of
 thing sailors are near* is such a regularity while *appearing in line 41,822*
-is not. Generalisation is what a lossy encoder does when it runs out of room.
+is not.
+
+This paragraph used to make a stronger claim: that the factorisation is what
+*creates* meaning, and that generalisation is simply what a lossy encoder
+does when it runs out of room. That was rhetoric, and [measuring it against
+the uncompressed matrix](#does-compression-add-anything) showed it was too
+strong in one direction and too weak in another. The corrected version is
+above, and the measurement is below.
 
 **5. Geometry.** Scale each axis by `|eigenvalue|`, normalise, and ask
 questions with dot products.
@@ -129,8 +135,8 @@ eigendecomposition. It is measured below, and it is worth a factor of two.
 
 Neighbour lists are easy to admire and impossible to argue with. You read
 `whale -> sperm, fishery, whales`, you nod, and you have learned nothing you
-could compare against another build. There are two measurements here, and
-neither needs a download or a human judgement.
+could compare against another build. There are three measurements here, and
+none of them needs a download or a human judgement.
 
 ### Morphological analogy
 
@@ -215,6 +221,55 @@ number.
 Cosine is compared against cosine deliberately. A dot-product reconstruction
 of PPMI values would be exactly right at exponent 0.5 and wrong everywhere
 else by construction, which would smuggle the answer into the instrument.
+
+## Does compression add anything?
+
+Every measurement above compares the compressed space against *another
+compressed space*. None of them compared it against not compressing at all,
+and the README was meanwhile claiming that the factorisation is the step that
+creates meaning. That claim had no control behind it.
+
+`python -m sens baseline` supplies one. Same half-corpus, same vocabulary,
+same questions; one system uses the 64-dimensional space, the other uses the
+raw 4,000-dimensional PPMI rows directly as word vectors. Because both answer
+the same questions, the evidence is in the *disagreements* — questions one
+solved and the other did not — which is what McNemar's test counts.
+
+```
+840 paired questions
+
+  representation                  top1    top5    form
+  raw PPMI rows (4000 dims)       2.7%    9.9%   11.7%
+  compressed space (64 dims)      2.0%    7.1%   16.3%
+
+paired significance (McNemar, disagreements only)
+  top1  raw-only=19   compressed-only=13   p=0.3768   no difference
+  top5  raw-only=57   compressed-only=34   p=0.0211   raw wins
+  form  raw-only=66   compressed-only=105  p=0.0037   compressed wins
+```
+
+**Two significant results pointing opposite ways.** The raw matrix is better
+at retrieving the specific right word. The compressed space is better at
+producing the right *kind* of word. Neither representation dominates; they
+disagree about what to be good at.
+
+Held-out similarity says the same thing from the other side. Predicting
+similarity on unseen text, the raw 4,000-dimensional rows score **0.657**
+against the compressed space's **0.591** — and the dimension curve rises
+monotonically to at least 160 without ever turning over. There is no
+compression sweet spot to be found here.
+
+So the honest summary is not the one I started with. Compression does not
+conjure predictive power out of nothing; measured on retrieval or on
+similarity it is a lossy approximation that keeps about 90% of what the raw
+counts had, at 1.6% of the dimensions. What it *does* is reallocate: it
+spends its 64 axes on what generalises across words and cannot afford what
+distinguishes them. `darcy's` for `bingley's` is that trade happening in
+public — the possessive relation survives the squeeze and the identity of the
+person does not.
+
+That is a more useful thing to know than the slogan it replaced, and it is
+the same story the `form` column told earlier, arrived at independently.
 
 ## Being wrong about a default
 
@@ -344,6 +399,7 @@ python -m sens demo
 python -m sens evaluate                 # morphological analogy benchmark
 python -m sens evaluate --misses 5      # ...and what it says instead
 python -m sens heldout                  # predict unseen text
+python -m sens baseline                 # compare against no compression
 python -m sens sweep                    # test the pipeline's own settings
 python -m sens neighbors whale ship happiness
 python -m sens analogy father mother son
@@ -377,9 +433,10 @@ sens/pipeline.py    the five stages, end to end
 sens/evaluate.py    a benchmark generated from the vocabulary itself
 sens/experiments.py exponent sweep and dimension-matched sign ablation
 sens/heldout.py     does the compression generalise, or memorise
+sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              203 tests
+tests/              232 tests
 ```
 
 ```bash
@@ -409,8 +466,15 @@ thing actually happen at a scale where I could check every step.
 
 The held-out number is the closest thing to a direct test of that bet, and it
 is why I built it: 0.59 rank correlation with similarity measured on text the
-space never read. The compression is not storing the corpus. It is storing
-what the corpus was evidence *of*.
+space never read. The compression is not storing the corpus.
+
+But it is not free, either, and I only found that out by building the control
+that could embarrass me. The raw uncompressed counts predict that same
+held-out similarity *better*, 0.66 to 0.59. What 64 dimensions buy is not
+accuracy — it is a change in what the representation is for. It gets better
+at the kind of thing a word is and worse at which word it was. If there is a
+lesson in this repository for the larger version of it, that is probably the
+one.
 
 What surprises me is not that it works. It is how little it needs. No syntax,
 no grammar, no supervision, no labels, no notion that words refer to
