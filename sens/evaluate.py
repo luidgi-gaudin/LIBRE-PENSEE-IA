@@ -51,7 +51,10 @@ RULES: tuple[Rule, ...] = (
     Rule("past", suffix="ed"),
     Rule("progressive", suffix="ing"),
     Rule("adverb", suffix="ly"),
-    Rule("possessive", suffix="'s"),
+    # Named for the string, not the grammar. In dialogue-heavy prose most
+    # of these are contractions (`that's`, `what's`, `there's`) rather than
+    # possessives, and calling the category `possessive` was simply wrong.
+    Rule("apostrophe-s", suffix="'s"),
     Rule("er-form", suffix="er"),
     Rule("negation", prefix="un"),
 )

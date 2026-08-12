@@ -214,7 +214,7 @@ plural         5.8%   22.5%   35.0%    6.7%   16.7%   37.5%
 past           3.3%    5.8%   24.2%    3.3%    5.8%   24.2%
 progressive    2.5%   10.0%   21.7%    2.5%    8.3%   19.2%
 adverb         1.7%    5.0%   15.8%    1.7%    4.2%   13.3%
-possessive    11.7%   35.0%   55.8%   14.2%   39.2%   61.7%
+apostrophe-s  11.7%   35.0%   55.8%   14.2%   39.2%   61.7%
 er-form        0.8%    3.3%    1.7%    0.0%    2.5%    0.8%
 negation       3.3%   10.0%    4.2%    1.7%   10.0%    3.3%
 ALL            4.2%   13.1%   22.6%    4.3%   12.4%   22.9%
@@ -238,8 +238,8 @@ friend : friend's :: bingley : darcy's     (wanted bingley's)
 count  : count's  :: dolokhov : prince's   (wanted dolokhov's)
 ```
 
-On possessives the model produces *a possessive* 56% of the time and *the
-right* possessive 12% of the time — a near-fivefold gap. The relation is in
+On `'s`-forms the model produces *an* `'s`-form 56% of the time and the
+*right* one 12% of the time — a near-fivefold gap. The relation is in
 the geometry; what fails is holding onto `c` while applying it. Accuracy
 alone cannot tell `darcy's` from `darcy`, and those two failures mean
 opposite things: one says the relation was never learned, the other says it
@@ -737,7 +737,7 @@ not something to adopt on one metric.
 **Splitting clitics.** `whale's` as two tokens scores 13.7 sd better on
 held-out. It is also linguistically defensible, and it is the more
 interesting of the two, because a second metric can just about arbitrate: the
-`possessive` benchmark category exists only *because* clitics are kept, so
+`apostrophe-s` benchmark category exists only *because* clitics are kept, so
 the comparison runs on the six categories that survive both.
 
 ```
@@ -917,12 +917,61 @@ not a hint of an effect — while 160 wins outright on top-5 at p = 0.018.
 More dimensions are simply better here.
 
 So the claim was over-generalised from a single corpus. Three independent
-routes agreed with each other — the possessive misses, the uncompressed
+routes agreed with each other — the `'s`-form misses, the uncompressed
 control, the dimension curve — and agreeing with each other is not the same
 as being true of anything but Melville and company. Why narrative fiction
 should have a compression sweet spot that argumentative prose lacks, I do not
 know, and after three tidy explanations died this session I am not going to
 offer a fourth.
+
+### Where the difference actually lives
+
+Declining to explain something is not the same as declining to measure it.
+The obvious candidates are gross properties of the two corpora, and those
+are cheap to check:
+
+```
+corpus           tokens    types     ttr        nnz   dense
+novels        1,771,272   35,437  0.0200    567,932   3.55%
+expository    1,658,307   33,896  0.0204    507,703   3.17%
+
+spectral mass in the top   8      32      64
+novels                  14.0%   34.5%   54.6%
+expository              14.0%   34.5%   55.0%
+```
+
+They are the same corpus by every gross measure — size, vocabulary,
+type-token ratio, matrix density, and, to three significant figures, the
+shape of the spectrum. The natural mechanical story, that expository prose
+has a flatter spectrum so truncation costs more there, is dead on arrival.
+
+Breaking the comparison down by benchmark category finds it immediately:
+
+```
+novels                            expository
+category      raw    cmp    p     category      raw    cmp    p
+plural      27.5%  35.0%  0.22    plural      38.3%  29.2%  0.15
+past         8.3%  26.7%  0.0005* past        20.0%  21.7%  0.86
+apostrophe-s 17.5% 35.0%  0.0003* apostrophe-s   — absent —
+er-form     10.0%   1.7%  0.0094* er-form     26.7%  15.0%  0.0216*
+```
+
+The novels' compression advantage is not spread across the benchmark. It
+lives in two categories, `past` and `apostrophe-s`, at p = 0.0005 and
+p = 0.0003. And `apostrophe-s` **does not exist in the expository corpus** —
+58 stem/`'s` pairs in the novels against exactly one, `plato`/`plato's`.
+
+Which also exposes a naming error that had been sitting in the benchmark
+since it was written. The rule matches the string `'s`, and in dialogue the
+commonest matches are `that's`, `what's`, `there's` — contractions, not
+possessives. The category has been renamed `apostrophe-s`, and what it
+really tracks is how much dialogue a corpus contains.
+
+So the non-replication has a concrete location, if not yet a cause: the
+effect was carried by two morphological categories, one of which is a
+feature of transcribed speech and is simply missing from argumentative
+prose. That is a narrower claim than "compression trades identity for
+category", and it is the one the measurements actually support.
 
 I nearly reported two reversals here and both were noise. At `limit=60`,
 Euclidean appeared to beat cosine and the form curve appeared to rise; a
