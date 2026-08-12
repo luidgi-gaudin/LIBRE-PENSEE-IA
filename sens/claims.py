@@ -109,6 +109,17 @@ STATUSES = tuple(REQUIRED)
 # largest source and had never been looked at.
 EFFECT_SD = 0.0111
 
+# The same quantity for the analogy benchmark's form rate, whose questions
+# are drawn with a fixed seed exactly as the held-out pairs are. Question
+# sampling contributes 0.0150 against the rebuild's 0.0080.
+#
+# Paired comparisons are exempt. A McNemar test over two systems answering
+# the identical question set cannot be moved by which questions were drawn,
+# because a hard question is hard for both and leaves the disagreement
+# count untouched. Every p-value in this register is paired; every effect
+# quoted in points is not, and is judged against this.
+FORM_SD = 0.0170
+
 
 @dataclass(frozen=True)
 class ConfigDelta:
@@ -176,6 +187,20 @@ class Claim:
     def replicated(self) -> bool:
         return "second-corpus" in self.controls
 
+    @property
+    def paired(self) -> bool:
+        """Whether the evidence is a paired test rather than a point spread.
+
+        This is not cosmetic. Question sampling moves the analogy metrics
+        more than rebuilding does, so an effect quoted in points is judged
+        against a floor twice what was once assumed. A McNemar test over the
+        same question set is untouched by it: a hard question is hard for
+        both systems and never enters the disagreement count. The
+        refutations in this register are all paired, which is why they
+        survived a correction that halved several confidence figures.
+        """
+        return "paired-test" in self.controls
+
 
 def _c(*names: str) -> frozenset[str]:
     for name in names:
@@ -224,10 +249,11 @@ REGISTER: tuple[Claim, ...] = (
         status="holds",
         novels="+20.2 form points",
         expository="dot collapses to 3.6%",
-        sigma=26.0,
+        sigma=11.9,
         controls=_c("noise-floor", "second-corpus"),
         note="vector length correlates -0.77 with frequency rank, so the "
              "dot product largely reports which words are common",
+        unit="form",
     ),
     Claim(
         id="harmonic-window",
@@ -312,10 +338,11 @@ REGISTER: tuple[Claim, ...] = (
         status="holds",
         novels="+5.7 form points",
         expository="+4.0 form points, p=0.006",
-        sigma=7.5,
+        sigma=3.4,
         controls=_c("noise-floor", "second-corpus", "paired-test"),
         note="the first measurement of this was an artefact: the analogy "
              "target was built in unit space and compared in raw space",
+        unit="form",
     ),
     Claim(
         id="lowercasing",
@@ -344,6 +371,7 @@ REGISTER: tuple[Claim, ...] = (
              "sign-based selection loses to random selection of the same "
              "size on both corpora, so sign is anti-correlated with "
              "importance rather than carrying signal of its own",
+        unit="form",
     ),
 
     # --- marginal ----------------------------------------------------------
@@ -426,6 +454,7 @@ REGISTER: tuple[Claim, ...] = (
         sigma=0.4,
         controls=_c("noise-floor"),
         note="predicted from the literature, did not appear",
+        unit="form",
     ),
 
     # --- true but backwards --------------------------------------------------
@@ -434,7 +463,7 @@ REGISTER: tuple[Claim, ...] = (
         what="a more accurate factorisation makes the model worse",
         section="a-better-factorisation-that-made-a-worse-model",
         status="refuted",
-        novels="-4.9 form points, 6 sd, while 39% faster and twice as "
+        novels="-4.9 form points, 2.9 sd, while 39% faster and twice as "
                "accurate on eigenvalues",
         expository="+0.4 form points, p=0.87; top5 p=0.41. no difference",
         controls=_c("noise-floor", "second-corpus", "paired-test",
@@ -443,6 +472,7 @@ REGISTER: tuple[Claim, ...] = (
              "which it then failed. The regularisation story explained a "
              "real effect on one corpus and there is no effect to explain "
              "on the other. Krylov remains 39% faster and no worse there",
+        unit="form",
     ),
 
     # --- withdrawn -----------------------------------------------------------
@@ -456,6 +486,7 @@ REGISTER: tuple[Claim, ...] = (
         controls=_c("noise-floor", "second-corpus", "paired-test"),
         note="reached by three independent routes, all measuring the same "
              "six novels. The routes agreeing was not evidence",
+        unit="form",
     ),
     Claim(
         id="dimension-sweet-spot",
@@ -465,6 +496,7 @@ REGISTER: tuple[Claim, ...] = (
         novels="p=0.034 favouring 64",
         expository="p=0.91, no effect",
         controls=_c("noise-floor", "second-corpus", "paired-test"),
+        unit="form",
     ),
 
     # --- open ----------------------------------------------------------------

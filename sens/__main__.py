@@ -580,6 +580,15 @@ def cmd_robustness(args: argparse.Namespace) -> int:
     for axis in axes:
         print("  " + axis.row)
     print("\n  " + robustness_mod.verdict(axes, args.seed_floor))
+
+    space = _load(args.space)
+    print("\n  the same question, for the analogy benchmark")
+    print("  " + robustness_mod.header())
+    for axis in robustness_mod.probe_analogy(space):
+        print("  " + axis.row)
+    print("\n  a paired McNemar test is immune to this: a hard question is"
+          "\n  hard for both systems and leaves the disagreement count alone."
+          "\n  Effects quoted in points are not.")
     return 0
 
 

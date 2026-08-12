@@ -117,6 +117,44 @@ def probe(
     return axes
 
 
+def probe_analogy(
+    space,
+    question_seeds: tuple[int, ...] = (20260811, 7, 42, 1234, 99999, 31415),
+    limit: int = 120,
+) -> list[Axis]:
+    """The same question, asked of the analogy benchmark.
+
+    The benchmark draws its questions with a fixed seed, which is the exact
+    counterpart of the pair sample on the held-out side, and turned out to
+    be the same size of problem: `form` moves twice as much with the
+    question sample as with the factorisation seed.
+
+    One caveat matters more than the numbers. A **paired** comparison —
+    McNemar over two systems answering the identical question set — is
+    immune to this entirely, because a question that is hard is hard for
+    both sides and drops out of the disagreement count. Every p-value in
+    this repository is paired and survives untouched. What does not survive
+    is an effect quoted as a number of points against a floor that only
+    counted rebuilds.
+    """
+    from .evaluate import evaluate, totals
+
+    axes = {
+        name: Axis(f"questions/{name}", "which questions the benchmark draws")
+        for name in ("top1", "top5", "form")
+    }
+    for seed in question_seeds:
+        tally = totals(
+            evaluate(space, methods=("3cosadd",), limit=limit, seed=seed)[0]
+        )["3cosadd"]
+        for name, value in (("top1", tally.accuracy),
+                            ("top5", tally.recall5),
+                            ("form", tally.form_rate)):
+            axes[name].settings.append(str(seed))
+            axes[name].scores.append(value)
+    return list(axes.values())
+
+
 def combined(axes: list[Axis]) -> float:
     """Total uncertainty, treating the axes as independent.
 

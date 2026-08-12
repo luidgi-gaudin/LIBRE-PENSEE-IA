@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 394 tests. 40 seconds end to end.
+and an audit of every default. 396 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -132,8 +132,8 @@ that produced it.
 | [PPMI vs raw counts](#is-the-surprise-step-worth-anything) | +0.353 · 32 sd | +0.479 · 43 sd | holds |
 | [PPMI vs log counts](#is-the-surprise-step-worth-anything) | +0.267 · 24 sd | +0.280 · 25 sd | holds |
 | [clipping: PPMI vs PMI](#is-the-surprise-step-worth-anything) | +0.082 · 7.4 sd | +0.084 · 7.5 sd | holds |
-| [cosine vs dot product](#is-cosine-the-right-question-to-ask) | +20.2 pts · 26 sd | dot collapses | holds |
-| [cosine vs Euclidean](#is-cosine-the-right-question-to-ask) | +5.7 pts · 7.5 sd | +4.0 pts · p 0.006 | holds |
+| [cosine vs dot product](#is-cosine-the-right-question-to-ask) | +20.2 pts · 12 sd | dot collapses | holds |
+| [cosine vs Euclidean](#is-cosine-the-right-question-to-ask) | +5.7 pts · 3.4 sd | +4.0 pts · p 0.006 | holds |
 | [1/distance vs flat window](#auditing-the-rest-of-the-defaults) | +0.086 · 7.7 sd | +0.118 · 11 sd | holds |
 | [exponent 1.0 vs 0.5](#being-wrong-about-a-default) | +0.108 · 9.8 sd | +0.128 · 12 sd | holds |
 | [pruning: min weight 1 vs 0](#auditing-the-rest-of-the-defaults) | +0.053 · 4.8 sd | +0.083 · 7.5 sd | holds |
@@ -146,7 +146,7 @@ that produced it.
 | [window 4 vs 6](#auditing-the-rest-of-the-defaults) | −0.004 · 0.4 sd | not run | **no effect** |
 | [min\_count 5 vs 20](#the-two-that-needed-a-different-ruler) | 0.002 · 0.5 sd | not run | **no effect** |
 | [3CosMul vs 3CosAdd](#morphological-analogy) | −0.001 · 0.4 sd | not run | **no effect** |
-| [accurate factorisation (Krylov)](#a-better-factorisation-that-made-a-worse-model) | −4.9 pts · 6 sd, 39% faster | +0.4 pts · p 0.87 | **refuted** |
+| [accurate factorisation (Krylov)](#a-better-factorisation-that-made-a-worse-model) | −4.9 pts · 2.9 sd, 39% faster | +0.4 pts · p 0.87 | **refuted** |
 | [compression trades identity for category](#does-compression-add-anything) | +5.3 pts · p 0.004 | −5.3 pts · p 0.008 | **refuted** |
 | [64 dims beat 160 on category](#how-many-dimensions-and-the-trade-seen-directly) | p 0.034 | p 0.91 | **refuted** |
 
@@ -347,13 +347,37 @@ should drag both sides of a comparison down together. Measured on the
 harmonic-window claim across six samples, it does not: the difference has
 sd 0.0109 against the absolute's 0.0097. No cancellation at all.
 
-So the honest floor for an effect is **0.0111, and every sigma in this
-README was overstated by 2.4×**. All of them are now divided by the right
-number. The consequences are real but not fatal:
+The analogy benchmark has the same problem in the same place. Its questions
+are drawn with a fixed seed, exactly as the held-out pairs are:
+
+```
+metric   question-sample sd   rebuild sd   combined
+top1                 0.0051       0.0020     0.0055
+top5                 0.0030       0.0080     0.0085
+form                 0.0150       0.0080     0.0170
+```
+
+`form`'s real spread is 1.70 points, not the 0.80 it was quoted against.
+
+**One kind of evidence is exempt, and it is the kind the retractions rest
+on.** A paired McNemar test asks two systems the identical questions, so a
+question that happens to be hard is hard for both and never enters the
+disagreement count. Every p-value in this repository is paired. Every effect
+quoted as a number of points is not. That distinction is now a property on
+each claim and a test asserting the refutations all have it — because if it
+were only a paragraph, the next correction would sweep them away with
+everything else.
+
+So the honest floor for an effect is **0.0111 held-out and 0.0170 in form
+points, and every unpaired sigma in this README was overstated by 2 to
+2.4×**. All of them are now divided by the right number. The consequences are real but not fatal:
 
 - `window 4 vs 2` drops from 4.6 sd to 2.0, from solid to marginal.
 - `shift` drops from 9.1 sd to 3.8, `pruning` from 11 to 4.8.
-- The large effects stay large: PPMI over raw counts is 32 sd rather than 75.
+- `cosine vs Euclidean` drops from 7.5 sd to 3.4, and survives only because
+  its replication was a paired test.
+- The large effects stay large: PPMI over raw counts is 32 sd rather than 75,
+  cosine over the dot product 12 rather than 26.
 
 Nothing changed status except `window-size`, and no conclusion reversed. But
 for a dozen commits this README was quoting confidence it had not earned,
@@ -1353,7 +1377,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              394 tests
+tests/              396 tests
 ```
 
 ```bash

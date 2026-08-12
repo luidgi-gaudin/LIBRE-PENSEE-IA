@@ -248,12 +248,37 @@ class TestNoiseFloorDiscipline(unittest.TestCase):
                     f"{claim.effect}/{EFFECT_SD} = {expected:.2f}",
             )
 
+    def test_form_sigmas_match_the_form_floor(self):
+        from sens.claims import FORM_SD
+
+        for claim in REGISTER:
+            if claim.unit != "form" or claim.sigma in (None, 0.0):
+                continue
+            stated = re.search(r"([\d.]+) form points", claim.novels)
+            if not stated:
+                continue
+            expected = float(stated.group(1)) / 100.0 / FORM_SD
+            self.assertAlmostEqual(
+                claim.sigma, expected, delta=0.15,
+                msg=f"{claim.id}: sigma {claim.sigma} but "
+                    f"{stated.group(1)} pts / {FORM_SD} = {expected:.2f}",
+            )
+
+    def test_paired_claims_are_exempt_from_the_point_floor(self):
+        # A McNemar test over one question set cannot be moved by which
+        # questions were drawn. Every refutation here is paired, which is
+        # why they survived the correction that halved several sigmas.
+        for claim in by_status("refuted"):
+            self.assertTrue(claim.paired, claim.id)
+
     def test_statuses_agree_with_their_sigmas(self):
         # Three standard deviations is where this repository draws `holds`.
         # An effect below it that still says `holds` is the exact mistake
         # the noise floor exists to prevent.
         for claim in REGISTER:
-            if claim.sigma is None or claim.unit != "spearman":
+            if claim.sigma is None or claim.sigma == 0.0:
+                continue
+            if claim.paired:
                 continue
             if claim.status == "holds":
                 self.assertGreaterEqual(claim.sigma, 3.0, claim.id)
