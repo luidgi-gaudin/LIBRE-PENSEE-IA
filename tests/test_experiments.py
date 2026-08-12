@@ -321,3 +321,60 @@ class TestDimensionCurve(unittest.TestCase):
 
         for column in ("dims", "held-out", "top5", "form"):
             self.assertIn(column, dimension_header())
+
+
+class TestShrunk(unittest.TestCase):
+    """Soft thresholding: the deliberate version of a helpful accident."""
+
+    def test_zero_threshold_changes_nothing(self):
+        space = factorised(1.0)
+        same = space.shrunk(0.0)
+        for a_row, b_row in zip(space.vectors, same.vectors):
+            for a, b in zip(a_row, b_row):
+                self.assertAlmostEqual(a, b, places=12)
+
+    def test_it_moves_every_eigenvalue_toward_zero_by_the_threshold(self):
+        # Eigenvalues are 4, -2, 1 at power 1. Shrinking by 1 should scale
+        # the axes by 3/4, 1/2 and 0.
+        space = factorised(1.0).shrunk(1.0)
+        self.assertAlmostEqual(space.vectors[0][0], 4.0 * 0.75, places=12)
+        self.assertAlmostEqual(space.vectors[1][1], 2.0 * 0.5, places=12)
+        self.assertAlmostEqual(space.vectors[2][2], 0.0, places=12)
+
+    def test_it_uses_magnitude_not_signed_value(self):
+        # The second eigenvalue is negative; shrinking must pull it toward
+        # zero, not make it more negative.
+        space = factorised(1.0).shrunk(0.5)
+        self.assertAlmostEqual(space.vectors[1][1], 2.0 * 0.75, places=12)
+
+    def test_it_never_crosses_zero(self):
+        space = factorised(1.0).shrunk(100.0)
+        for row in space.vectors:
+            for value in row:
+                self.assertAlmostEqual(value, 0.0, places=12)
+
+    def test_it_hits_the_small_eigenvalues_hardest(self):
+        # The point of the operation: a fixed subtraction is a large
+        # relative cut for a small eigenvalue and a small one for a big one.
+        before = factorised(1.0)
+        after = before.shrunk(0.5)
+        big = after.vectors[0][0] / before.vectors[0][0]
+        small = after.vectors[2][2] / before.vectors[2][2]
+        self.assertGreater(big, small)
+
+    def test_the_threshold_is_recorded(self):
+        self.assertEqual(factorised().shrunk(2.0).meta["config"]["shrinkage"], 2.0)
+
+    def test_it_respects_the_eigenvalue_power(self):
+        # At power 0.5 the scale factor is the square root of the ratio.
+        space = factorised(0.5).shrunk(1.0)
+        expected = (4.0 ** 0.5) * ((3.0 / 4.0) ** 0.5)
+        self.assertAlmostEqual(space.vectors[0][0], expected, places=12)
+
+    def test_a_space_without_eigenvalues_refuses(self):
+        with self.assertRaises(ValueError):
+            Space(words=["a"], vectors=[[1.0]]).shrunk(1.0)
+
+    def test_a_shrunk_space_can_still_be_sliced(self):
+        space = factorised(1.0).shrunk(0.5).subspace([0, 1])
+        self.assertEqual(space.dim, 2)

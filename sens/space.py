@@ -184,6 +184,43 @@ class Space:
             meta=meta,
         )
 
+    def shrunk(self, threshold: float) -> "Space":
+        """Soft-threshold the eigenvalues before they weight the axes.
+
+        Every eigenvalue moves toward zero by `threshold`, and any that would
+        cross it is set there:
+
+            |lambda|  ->  max(0, |lambda| - threshold)
+
+        This exists because of a measured accident. An inaccurate
+        factorisation systematically underestimates the poorly determined
+        tail, and that turned out to *help* — the tail is mostly noise, and
+        under-weighting it is regularisation arrived at by mistake. Soft
+        thresholding is the deliberate version: keep the accurate spectrum,
+        then discount it on purpose, by an amount you can tune and report
+        rather than one that falls out of how many iterations you happened
+        to run.
+        """
+        values = self._eigenvalues()
+        power = self.meta.get("config", {}).get("eigenvalue_power", 1.0)
+        factors = []
+        for value in values:
+            magnitude = abs(value)
+            if magnitude <= 0.0:
+                factors.append(0.0)
+                continue
+            kept = max(0.0, magnitude - threshold)
+            factors.append((kept / magnitude) ** power)
+        meta = dict(self.meta)
+        meta["config"] = {**meta.get("config", {}), "shrinkage": threshold}
+        return Space(
+            words=list(self.words),
+            vectors=[
+                [x * f for x, f in zip(row, factors)] for row in self.vectors
+            ],
+            meta=meta,
+        )
+
     def subspace(self, keep: list[int]) -> "Space":
         """A space using only the listed dimensions.
 

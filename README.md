@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 267 tests. 40 seconds end to end.
+and an audit of every default. 276 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -468,12 +468,48 @@ them at their true, larger magnitude. Subspace iteration's error is not
 random error; it is systematically biased against the poorly determined tail,
 and that bias was doing useful work. **The inaccuracy was a regulariser.**
 
-So the default stays on subspace iteration, and `factoriser="krylov"` is
-there for anyone who wants 39% off the build time and can spend the quality.
-The finding is the point rather than the code: on this problem, a more
-faithful decomposition of the matrix is a less useful description of the
-language, and there was no way to know that without measuring the model
-rather than the mathematics.
+**So can the regularisation be done on purpose?** If the benefit is just
+under-weighting the tail, then keeping the accurate spectrum and discounting
+it deliberately should recover the loss — and give a knob you can tune and
+report instead of one that falls out of how many iterations you happened to
+run. `Space.shrunk` soft-thresholds every eigenvalue toward zero by a fixed
+amount, and `Config(shrinkage=...)` applies it during a build.
+
+It works, partly.
+
+```
+configuration              top1    top5    form    held-out
+krylov, no shrinkage       3.6%   10.1%   17.7%      0.6033
+krylov, shrink 10          3.7%   10.2%   19.0%      0.6096
+krylov, shrink 20          4.4%   10.6%   20.2%      0.6030
+krylov, shrink 25          4.5%   10.8%   20.5%      0.5935
+krylov, shrink 30          3.9%    9.6%   21.0%      0.5802
+subspace (the default)     4.2%   13.1%   22.6%      0.6002
+```
+
+Two things fall out. The first is that the two metrics want different amounts
+of it — held-out similarity peaks at a shrinkage of 10, analogy form keeps
+improving to 30 — which is the same disagreement as everywhere else in this
+repository, since the tail carries fine detail that helps similarity and
+noise that hurts category.
+
+The second is the more interesting one. Explicit shrinkage recovers top-1
+completely (4.5% against the default's 4.2%) and most of form, but never
+top-5, and there is no threshold at which Krylov wins on both metrics at
+once. At shrinkage 10 it beats the default on held-out — 0.6096 against
+0.6002, at 39% less build time — and loses on form. **So the accidental
+regularisation is not purely a matter of magnitude.** If it were, rescaling
+would reproduce it exactly. Subspace iteration also lands in a *different
+subspace*, one biased toward well-determined directions, and no reweighting
+of a noisy axis turns it into a useful one.
+
+The default therefore stays on subspace iteration, because category structure
+is the property this repository has spent its length arguing is the
+interesting one. `factoriser="krylov"` with `shrinkage=10` is the better
+choice if you want similarity and speed. The finding is the point rather than
+the code: on this problem a more faithful decomposition of the matrix is a
+less useful description of the language, and there was no way to know that
+without measuring the model rather than the mathematics.
 
 It also explains something that looked odd earlier — why held-out quality
 barely moved across power-iteration counts while eigenvalue error moved by a
@@ -625,7 +661,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              267 tests
+tests/              276 tests
 ```
 
 ```bash

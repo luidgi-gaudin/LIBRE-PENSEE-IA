@@ -40,6 +40,7 @@ class Config:
     oversample: int = 16
     power_iterations: int = 3
     eigenvalue_power: float = 1.0
+    shrinkage: float = 0.0
     seed: int = 20260811
 
     def as_dict(self) -> dict:
@@ -151,7 +152,12 @@ def build(
     # reconstructs the fitted matrix best. Correlation against the *fitted*
     # matrix peaks at 0.75 and then falls, so the instrument is not just
     # measuring reconstruction.
-    scale = [abs(v) ** config.eigenvalue_power for v in values]
+    # Soft-threshold first, if asked. An inaccurate factorisation shrinks
+    # the poorly determined tail by accident and that helps; this is the
+    # deliberate version, for use with a factoriser accurate enough not to
+    # do it for free. See Space.shrunk.
+    magnitudes = [max(0.0, abs(v) - config.shrinkage) for v in values]
+    scale = [m ** config.eigenvalue_power for m in magnitudes]
     scaled = [[x * s for x, s in zip(row, scale)] for row in vectors]
 
     space = Space(
