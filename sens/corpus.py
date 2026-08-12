@@ -50,21 +50,59 @@ LIBRARY: tuple[Work, ...] = (
     Work("monte-cristo", 1184, "The Count of Monte Cristo", "Dumas"),
 )
 
+# A second corpus, for asking whether any of this generalises.
+#
+# Every number in this repository was measured on six novels, which makes
+# every conclusion a claim about six novels until something else is tried.
+# These nine are chosen to be as unlike them as public-domain English gets
+# while staying the same size: expository and argumentative prose rather
+# than narrative, with almost no dialogue and a technical vocabulary.
+EXPOSITORY: tuple[Work, ...] = (
+    Work("origin-of-species", 1228, "On the Origin of Species", "Darwin"),
+    Work("voyage-of-the-beagle", 944, "The Voyage of the Beagle", "Darwin"),
+    Work("descent-of-man", 2300, "The Descent of Man", "Darwin"),
+    Work("wealth-of-nations", 3300, "The Wealth of Nations", "Smith"),
+    Work("leviathan", 3207, "Leviathan", "Hobbes"),
+    Work("republic", 1497, "The Republic", "Plato"),
+    Work("meditations", 2680, "Meditations", "Aurelius"),
+    Work("beyond-good-and-evil", 4363, "Beyond Good and Evil", "Nietzsche"),
+    Work("problems-of-philosophy", 5827, "The Problems of Philosophy", "Russell"),
+)
 
-def available() -> list[Work]:
+COLLECTIONS: dict[str, tuple[Work, ...]] = {
+    "novels": LIBRARY,
+    "expository": EXPOSITORY,
+}
+
+
+def works(collection: str = "novels") -> tuple[Work, ...]:
+    try:
+        return COLLECTIONS[collection]
+    except KeyError:
+        raise KeyError(
+            f"unknown collection {collection!r}; "
+            f"expected one of {sorted(COLLECTIONS)}"
+        ) from None
+
+
+def available(collection: str = "novels") -> list[Work]:
     """The works currently present on disk."""
-    return [w for w in LIBRARY if os.path.exists(w.path)]
+    return [w for w in works(collection) if os.path.exists(w.path)]
 
 
-def missing() -> list[Work]:
-    return [w for w in LIBRARY if not os.path.exists(w.path)]
+def missing(collection: str = "novels") -> list[Work]:
+    return [w for w in works(collection) if not os.path.exists(w.path)]
 
 
-def fetch(works: list[Work] | None = None, timeout: int = 60) -> list[Work]:
+def fetch(
+    wanted: list[Work] | None = None,
+    timeout: int = 60,
+    collection: str = "novels",
+) -> list[Work]:
     """Download any works not already on disk. Returns what was fetched."""
     os.makedirs(CORPUS_DIR, exist_ok=True)
     fetched = []
-    for work in works if works is not None else LIBRARY:
+    for work in wanted if wanted is not None else works(collection):
         if os.path.exists(work.path):
             continue
         with urllib.request.urlopen(work.url, timeout=timeout) as response:

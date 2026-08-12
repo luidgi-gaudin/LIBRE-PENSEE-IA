@@ -345,3 +345,51 @@ class TestTokenisationVariants(unittest.TestCase):
                 block=300, pair_vocab=8, pair_count=20,
             )
         self.assertAlmostEqual(rows[0][2], 1.0, places=10)
+
+
+class TestCollections(unittest.TestCase):
+    """The second corpus exists so the findings can be checked, not assumed."""
+
+    def test_both_collections_are_registered(self):
+        from sens import corpus
+
+        self.assertEqual(sorted(corpus.COLLECTIONS), ["expository", "novels"])
+
+    def test_the_default_collection_is_the_novels(self):
+        from sens import corpus
+
+        self.assertEqual(corpus.works(), corpus.LIBRARY)
+
+    def test_an_unknown_collection_says_what_it_expected(self):
+        from sens import corpus
+
+        with self.assertRaises(KeyError) as caught:
+            corpus.works("poetry")
+        self.assertIn("expository", str(caught.exception))
+
+    def test_the_collections_do_not_overlap(self):
+        from sens import corpus
+
+        novels = {w.slug for w in corpus.LIBRARY}
+        other = {w.slug for w in corpus.EXPOSITORY}
+        self.assertEqual(novels & other, set())
+
+    def test_every_slug_is_unique_across_collections(self):
+        from sens import corpus
+
+        slugs = [w.slug for c in corpus.COLLECTIONS.values() for w in c]
+        self.assertEqual(len(slugs), len(set(slugs)))
+
+    def test_every_gutenberg_id_is_unique(self):
+        from sens import corpus
+
+        ids = [w.gutenberg_id for c in corpus.COLLECTIONS.values() for w in c]
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_availability_is_scoped_to_the_collection(self):
+        from sens import corpus
+
+        # The novels are on disk in this repository; the control corpus is
+        # fetched on demand, so asking about it must not report the novels.
+        for work in corpus.available("expository"):
+            self.assertIn(work.slug, {w.slug for w in corpus.EXPOSITORY})

@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 351 tests. 40 seconds end to end.
+and an audit of every default. 358 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -858,6 +858,62 @@ Two parameters cannot be audited this way at all. Changing `vocab_size` or
 `min_count` changes which words exist, so the pairs and the truth table
 change with them and no fixed yardstick survives.
 
+## Does any of it generalise?
+
+Every number above was measured on six novels, which makes every conclusion
+a claim about six novels. That is the largest unexamined threat to the whole
+repository, and it costs one afternoon to check.
+
+`python -m sens fetch --collection expository` downloads a second corpus
+chosen to be as unlike the first as public-domain English gets at the same
+size: 1.68 million words of Darwin, Smith, Hobbes, Plato, Aurelius,
+Nietzsche and Russell. Expository and argumentative rather than narrative,
+almost no dialogue, a technical vocabulary. Its own noise floor is measured
+locally — sd 0.0026 against the novels' 0.0038.
+
+```
+finding                             novels   expository
+weighting: ppmi vs raw             +0.3760      +0.4605   178 sd
+weighting: ppmi vs log             +0.2643      +0.2600   100 sd
+weighting: ppmi vs pmi             +0.0769      +0.0728    28 sd
+harmonic: on vs off                +0.1012      +0.0881    34 sd
+exponent: 1.0 vs 0.5               +0.0925      +0.1189    46 sd
+exponent: 1.0 vs 0.0               +0.1300      +0.3410   132 sd
+min_pair_weight: 1 vs 0            +0.0737      +0.0598    23 sd
+shift: 1 vs 2                      +0.0632      +0.0418    16 sd
+```
+
+**Eight for eight.** Same direction, comparable magnitude, every one solid
+against the local noise floor. Nothing here is an artefact of Melville.
+
+The metric result replicates too, on a paired test over 720 questions:
+cosine beats Euclidean on form 17.1% to 13.1% (p = 0.0063) and the plain dot
+product collapses to 3.6%. Normalising is not a fact about novels either.
+
+One thing does **not** resolve. On the novels, the form rate peaks near 48
+dimensions and falls away — the identity-for-category trade seen as a curve.
+On the expository corpus the same curve is flat inside its noise:
+
+```
+dims    held-out    form
+  16      0.5961   15.8%
+  32      0.6175   15.8%
+  64      0.6370   15.3%
+ 128      0.6450   17.8%
+```
+
+Held-out correlation rises monotonically, as before. The form column moves by
+about two points across the whole range, which at this sample size is roughly
+one standard deviation. So this is *unresolved*, not refuted — the shape that
+was clear on one corpus is invisible on the other, and settling it would need
+more questions than I ran.
+
+I nearly reported two reversals here and both were noise. At `limit=60`,
+Euclidean appeared to beat cosine and the form curve appeared to rise; a
+proper paired test at `limit=120` put cosine ahead by p = 0.006. The lesson is
+the one this repository keeps relearning: a difference of about one standard
+deviation will happily tell you whatever you were expecting.
+
 ## What doesn't work
 
 The famous analogy is the weakest thing here.
@@ -914,6 +970,7 @@ git clone <this repo> && cd LIBRE-PENSEE-IA
 
 python -m sens build                    # Moby-Dick only, offline, ~16s
 python -m sens fetch                    # the other five novels
+python -m sens fetch --collection expository   # the control corpus
 python -m sens build                    # all six, ~42s
 
 python -m sens demo
@@ -963,7 +1020,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              351 tests
+tests/              358 tests
 ```
 
 ```bash

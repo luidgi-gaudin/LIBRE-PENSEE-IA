@@ -58,13 +58,13 @@ def _table(rows: list[tuple[str, float]]) -> str:
 
 
 def cmd_fetch(args: argparse.Namespace) -> int:
-    pending = corpus.missing()
+    pending = corpus.missing(args.collection)
     if not pending:
         print("corpus complete")
     for work in pending:
         print(f"fetching {work.title} ({work.author}) ...", flush=True)
         corpus.fetch([work])
-    have = corpus.available()
+    have = corpus.available(args.collection)
     print(f"\n{len(have)} work(s) in {corpus.CORPUS_DIR}")
     for work in have:
         size = os.path.getsize(work.path) / 1e6
@@ -519,6 +519,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("fetch", help="download the corpus")
+    p.add_argument("--collection", default="novels",
+                   choices=sorted(corpus.COLLECTIONS),
+                   help="novels (default) or the expository control corpus")
     p.set_defaults(func=cmd_fetch)
 
     p = sub.add_parser("build", help="build a space from the corpus")
