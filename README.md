@@ -1029,11 +1029,46 @@ commonest matches are `that's`, `what's`, `there's` — contractions, not
 possessives. The category has been renamed `apostrophe-s`, and what it
 really tracks is how much dialogue a corpus contains.
 
-So the non-replication has a concrete location, if not yet a cause: the
-effect was carried by two morphological categories, one of which is a
-feature of transcribed speech and is simply missing from argumentative
-prose. That is a narrower claim than "compression trades identity for
-category", and it is the one the measurements actually support.
+So the non-replication has a concrete location: the effect was carried by
+two morphological categories, one of which is a feature of transcribed
+speech and is simply missing from argumentative prose.
+
+The other one, `past`, exists in both corpora, and looking at it properly
+turns the whole finding around. Counting how often each representation
+answers a past-tense question with *any* `-ed` word:
+
+```
+corpus       -ed types  -ed tokens   raw gives -ed   compressed gives -ed
+novels             476       4.55%           25.0%                  50.0%
+expository         393       3.11%           42.5%                  52.5%
+```
+
+**Compression behaves identically on the two corpora** — 50.0% against
+52.5%, well inside the noise. Everything that differs is in the raw
+baseline, which produces the right form a quarter of the time on novels and
+nearly half the time on expository prose.
+
+So there was never a compression advantage on the novels. There was a *raw
+representation deficit*, and compression's constant performance merely
+looked like an advantage next to it. The uncompressed PPMI rows fail to
+encode past tense in narrative fiction, and nothing about the factorisation
+is responsible for that.
+
+What the failure looks like, asking raw and compressed the same questions:
+
+```
+allow : allowed :: wish    : raw=cannot   compressed=wished
+clear : cleared :: confess : raw=retire   compressed=refusing
+fail  : failed  :: point   : raw=gives    compressed=completed
+```
+
+Raw returns bare verbs and modals; it has the semantic neighbourhood and not
+the tense. One correlate is measurable — novels' `-ed` rows are more diffuse
+than expository ones, 61.6 non-zeros against 47.0 and entropy 3.686 against
+3.480 — but every row in the novel corpus is denser, so this may be a
+property of the corpus rather than of its past tense. Four explanations have
+already died in this README from being tidier than their evidence, so it is
+recorded as a correlate and not as a cause.
 
 I nearly reported two reversals here and both were noise. At `limit=60`,
 Euclidean appeared to beat cosine and the form curve appeared to rise; a
