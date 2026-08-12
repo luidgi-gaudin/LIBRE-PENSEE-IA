@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 250 tests. 40 seconds end to end.
+and an audit of every default. 255 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -283,7 +283,44 @@ retracted number is left here rather than quietly deleted. The analogy
 benchmark can arbitrate, because its ground truth is English morphology
 rather than another PPMI table, and that is the comparison above.
 
-## Being wrong about a default
+## How many dimensions, and the trade seen directly
+
+`dim` was the last major default with nothing behind it. `python -m sens
+dimensions` settles it, and in doing so shows the identity-for-category trade
+as a continuous curve rather than a single comparison.
+
+One build at 160 dimensions serves the whole sweep, because the factorisation
+returns directions ordered by `|eigenvalue|` — every smaller space is a
+prefix of the larger one.
+
+```
+ dims      held-out     top5     form
+   16        0.5589     9.3%    19.6%
+   32        0.5907    11.1%    19.6%
+   48        0.6010    11.4%    22.1%
+   64        0.6054    12.1%    21.1%     <- the default
+   96        0.6106    11.1%    20.7%
+  128        0.6162    11.8%    16.4%
+  160        0.6176    10.7%    15.0%
+```
+
+**The two metrics disagree, and that is the result.** Held-out similarity
+improves monotonically with more dimensions and never turns over. The form
+rate peaks around 48 and then falls away, heading back down toward the 12.6%
+that the uncompressed 4,000-dimensional matrix scores.
+
+Paired on the same 840 questions, 64 dimensions beats 160 on form — 19.6%
+against 17.1%, McNemar **p = 0.034** — while losing 0.012 of held-out
+correlation and nothing significant on top-5 (p = 0.21).
+
+So this is the same trade the `form` column and the uncompressed control each
+found, now with a dose-response curve behind it. Adding axes buys detail and
+spends category. A space with 4,000 dimensions is the raw matrix and knows
+which word is which; a space with 48 has had to decide what words have in
+common. 64 is where this corpus puts the knee, which is why the default sits
+there rather than at the number that maximises either metric alone.
+
+## Being wrong about a default## Being wrong about a default
 
 The eigenvalue exponent used to be 0.5, which is the conventional choice and
 which a comment in `pipeline.py` used to defend by citation. It is now 1.0,
@@ -459,7 +496,9 @@ python -m sens evaluate                 # morphological analogy benchmark
 python -m sens evaluate --misses 5      # ...and what it says instead
 python -m sens heldout                  # predict unseen text
 python -m sens baseline                 # compare against no compression
-python -m sens sweep                    # test the pipeline's own settings
+python -m sens sweep                    # exponent sweep and sign ablation
+python -m sens audit                    # every default, fixed ruler (slow)
+python -m sens dimensions               # how many dimensions (slow)
 python -m sens neighbors whale ship happiness
 python -m sens analogy father mother son
 python -m sens similarity ship boat garden
@@ -496,7 +535,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              250 tests
+tests/              255 tests
 ```
 
 ```bash

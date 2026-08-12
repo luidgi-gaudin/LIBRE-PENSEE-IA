@@ -218,3 +218,61 @@ class TestFormatting(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDimensionCurve(unittest.TestCase):
+    """The curve reuses one factorisation, so the prefix property matters."""
+
+    def setUp(self):
+        from sens.heldout import Prepared
+        from sens.linalg import SparseMatrix
+
+        space = morphological()
+        # A truth table where the two halves of the vocabulary share context.
+        rows = []
+        for i in range(len(space.words)):
+            rows.append({0: 1.0, 1: float(i % 3) + 0.5, 2: float(i % 2)})
+        self.prepared = Prepared(
+            space=space,
+            truth=SparseMatrix(rows),
+            vocab=None,
+            pairs=[(0, 2), (1, 3), (0, 4), (2, 5)],
+            train_tokens=100,
+            test_tokens=100,
+        )
+
+    def test_one_row_per_dimension(self):
+        from sens.experiments import dimension_curve
+
+        rows = dimension_curve(self.prepared, dims=(2, 4, 7), limit=6)
+        self.assertEqual([r.dims for r in rows], [2, 4, 7])
+
+    def test_each_row_reports_both_metrics(self):
+        from sens.experiments import dimension_curve
+
+        for row in dimension_curve(self.prepared, dims=(4,), limit=6):
+            self.assertIsInstance(row.heldout, float)
+            self.assertIsInstance(row.form, float)
+            self.assertGreaterEqual(row.form, 0.0)
+            self.assertLessEqual(row.form, 1.0)
+
+    def test_smaller_dimensions_are_prefixes_of_larger_ones(self):
+        # The whole curve costs one build only because this holds: the
+        # factorisation returns directions ordered by |eigenvalue|, so
+        # taking the first k is taking the k strongest.
+        full = self.prepared.space
+        prefix = full.subspace(list(range(3)))
+        for row_full, row_prefix in zip(full.vectors, prefix.vectors):
+            self.assertEqual(row_full[:3], row_prefix)
+
+    def test_row_lines_up_with_the_header(self):
+        from sens.experiments import DimensionRow, dimension_header
+
+        row = DimensionRow(dims=64, heldout=0.6, top5=0.1, form=0.2).row
+        self.assertEqual(len(row), len(dimension_header()))
+
+    def test_header_names_both_metrics(self):
+        from sens.experiments import dimension_header
+
+        for column in ("dims", "held-out", "top5", "form"):
+            self.assertIn(column, dimension_header())

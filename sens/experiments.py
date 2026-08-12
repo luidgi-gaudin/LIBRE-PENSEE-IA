@@ -126,5 +126,66 @@ def ablate_signs(
     ]
 
 
+@dataclass
+class DimensionRow:
+    """One dimensionality, scored on both metrics at once."""
+
+    dims: int
+    heldout: float
+    top5: float
+    form: float
+
+    @property
+    def row(self) -> str:
+        return (
+            f"{self.dims:5}  {self.heldout:12.4f}  "
+            f"{self.top5:7.1%}  {self.form:7.1%}"
+        )
+
+
+def dimension_curve(
+    prepared,
+    dims: tuple[int, ...] = (16, 32, 48, 64, 96, 128, 160),
+    limit: int = 60,
+    seed: int = 20260811,
+) -> list[DimensionRow]:
+    """Score a range of dimensionalities on similarity and on category.
+
+    Takes a `heldout.Prepared` built at the largest dimension in `dims`;
+    every smaller one is a prefix of it, because the factorisation returns
+    directions ordered by `|eigenvalue|`. So the whole curve costs one build.
+
+    The two metrics disagree, and the disagreement is the point. Held-out
+    similarity keeps improving with more dimensions. The form rate — how
+    often the answer is at least the right *kind* of word — peaks early and
+    then falls back toward what the uncompressed matrix scores. Adding axes
+    buys detail and spends category.
+    """
+    from .evaluate import evaluate as run_benchmark, totals
+    from .heldout import correlation
+
+    rows = []
+    for k in dims:
+        variant = prepared.space.subspace(list(range(k)))
+        rho, _ = correlation(variant, prepared)
+        scores, _ = run_benchmark(
+            variant, methods=("3cosadd",), limit=limit, seed=seed
+        )
+        tally = totals(scores)["3cosadd"]
+        rows.append(
+            DimensionRow(
+                dims=k,
+                heldout=rho,
+                top5=tally.recall5,
+                form=tally.form_rate,
+            )
+        )
+    return rows
+
+
+def dimension_header() -> str:
+    return f"{'dims':>5}  {'held-out':>12}  {'top5':>7}  {'form':>7}"
+
+
 def header() -> str:
     return f"{'configuration':<22} {'dims':>4}  {'top1':>6}  {'top5':>6}  {'form':>6}"

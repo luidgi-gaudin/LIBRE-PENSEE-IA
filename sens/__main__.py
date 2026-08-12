@@ -11,6 +11,7 @@
     python -m sens heldout
     python -m sens baseline
     python -m sens audit
+    python -m sens dimensions
     python -m sens demo
     python -m sens info
 """
@@ -395,6 +396,43 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_dimensions(args: argparse.Namespace) -> int:
+    """How many dimensions, judged by two metrics that disagree."""
+    from .pipeline import Config
+
+    works = corpus.available()
+    if not works:
+        sys.exit("no corpus files found; run `python -m sens fetch`")
+
+    dims = tuple(sorted(args.dims))
+    print(f"building once at {dims[-1]} dims; every smaller one is a prefix",
+          file=sys.stderr)
+    prepared = heldout_mod.prepare(
+        [w.path for w in works],
+        config=Config(dim=dims[-1]),
+        seed=args.seed,
+        verbose=True,
+    )
+
+    rows = experiments.dimension_curve(
+        prepared, dims=dims, limit=args.limit, seed=args.seed
+    )
+    print()
+    print("  " + experiments.dimension_header())
+    for row in rows:
+        print("  " + row.row)
+
+    best_rho = max(rows, key=lambda r: r.heldout)
+    best_form = max(rows, key=lambda r: r.form)
+    print(
+        f"\n  held-out similarity peaks at {best_rho.dims} dims; "
+        f"form peaks at {best_form.dims}"
+    )
+    if best_rho.dims != best_form.dims:
+        print("  the two metrics disagree, which is the finding, not a fault")
+    return 0
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     space = _load(args.space)
     meta = space.meta
@@ -492,6 +530,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--seed", type=int, default=20260811)
     p.set_defaults(func=cmd_audit)
+
+    p = sub.add_parser(
+        "dimensions", help="how many dimensions, on two metrics (slow)"
+    )
+    p.add_argument("--dims", type=int, nargs="+",
+                   default=[16, 32, 48, 64, 96, 128, 160])
+    p.add_argument("--limit", type=int, default=60)
+    p.add_argument("--seed", type=int, default=20260811)
+    p.set_defaults(func=cmd_dimensions)
 
     p = sub.add_parser("demo", help="a guided tour of the results")
     p.set_defaults(func=cmd_demo)
