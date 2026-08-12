@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 413 tests. 40 seconds end to end.
+and an audit of every default. 428 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -131,41 +131,101 @@ default cannot redefine the measurement underneath itself. That freezing is
 sound. But the frozen values are an arbitrary choice, and nothing had asked
 whether the conclusions depend on them.
 
+The first version of this check was three claims run by hand, because those
+were the three already in a terminal. It found one reversal. That is a bad
+way to find things, so `sens robustness --rulers` now sweeps **every**
+re-derivable claim against four ground truths:
+
 ```
-ruler            harmonic off      raw counts    exponent 0.5
-a=0.75 frozen         +0.0858         +0.3531         +0.1083
-a=1.0                 -0.0099         +0.2699         +0.0510
-a=0.5                 -0.0165         +0.3267         +0.1232
+claim                  frozen a=0.75      a=1.0      a=0.5   window 2   verdict
+ppmi-vs-raw                  +0.3531    +0.2699    +0.3267    +0.2963   stable
+ppmi-vs-log                  +0.2669    +0.3206    +0.2791    +0.2628   stable
+harmonic-window              +0.0858    -0.0099    -0.0165    +0.1219   REVERSES
+eigenvalue-exponent          +0.1083    +0.0510    +0.1232    +0.1024   stable
+clipping                     +0.0822    +0.0931    +0.1901    +0.0761   stable
+pair-pruning                 +0.0533    -0.0212    -0.0453    +0.0838   REVERSES
+no-shift                     +0.0426    -0.0201    +0.0224    +0.0415   REVERSES
+alpha-smoothing-off          +0.0042          ·          ·    +0.0026   —
+window-size                  +0.0219    +0.0249    +0.0281          ·   stable
+window-4-vs-6                -0.0039    -0.0071    -0.0055          ·   stable
 ```
 
-Two of the three keep their direction comfortably. **The harmonic-window
-claim reverses sign.**
+**Three claims reverse, not one.** Generalising the check tripled what it
+caught, which is the whole argument for not running these things by hand.
 
-That claim sat at 5.6 sd, replicated on a second corpus, and was described
-here as the parameter with nothing behind it that turned out to matter most.
-It is real under the ruler this repository froze. Under a ruler built with
-`alpha=1.0` — the value the *model* uses by default — a flat window scores
-better than a `1/distance` one.
+`pair-pruning` — discarding pairs seen once or less — held at 3.5 sd and
+replicated on a second corpus. Under a ground truth built at `alpha=1.0`,
+pruning *hurts*. `no-shift` is the same story at 2.8 sd, and its flip clears
+the floor by a whisker; it is recorded at the same status anyway, because the
+alternative is picking a threshold after seeing which claims it would spare.
 
-The two claims measured beside it did not flip, so this is a property of that
-effect rather than of the check. Its status is now `instrument-dependent`:
-not refuted, since it holds and replicates under the frozen ruler, but not
-`holds` either, because that word would hide a dependence on how the
-instrument was built.
+Two things had to be fixed before those numbers could be believed.
 
-Five other held-out claims have never been put through this, and
-`sens claims --audit` now lists them every time rather than trusting that
-somebody will remember. Requiring the control today would fail claims nobody
-has had the chance to check; leaving it unreported is how the block phase
-sat unmeasured in a docstring for a dozen commits.
+**A sign flip is only meaningful above the floor.** The first sweep reported
+five reversals. Two of them were `alpha-smoothing-off` and `window-4-vs-6`,
+already registered as *no effect* at 0.3 sd. An effect that never rose above
+the noise has no direction to lose, and calling it instrument-dependent would
+dress a coin toss as a finding. `reverses()` now requires the effect to clear
+the floor on both sides of the flip.
+
+**A ruler that moves the claim's own parameter proves nothing.** The dots in
+the table are not missing data; they are refusals. Asking whether *alpha 1.0
+beats alpha 0.75* survives a ground truth rebuilt at `alpha=1.0` is asking a
+measurement whether it agrees with itself. That cell produced the largest
+apparent swing of the whole sweep — +0.0042 to −0.0424 — and it was an
+artefact of the check overlapping the thing checked. `alpha-smoothing-off` is
+consequently the one claim here the sweep *cannot* check.
+
+Status `instrument-dependent` means: not refuted, since these hold and
+replicate under the frozen ruler, but not `holds` either, because that word
+would hide a dependence on how the instrument was built.
+
+### The floor that three claims never got
+
+The sweep turned up a second problem on the way past. `sigma` in the register
+is a typed-in field, while `effect` and the floor are both present in the
+code — so the sigmas can be checked against arithmetic, and ten of them agree
+exactly. Three do not, and all three divide by **0.0038**: the original
+seed-only floor, superseded by 0.0047, then 0.0111, then 0.0152.
+
+| claim | quoted | against 0.0152 |
+| --- | --- | --- |
+| lowercasing | 3.4 sd | 0.9 sd |
+| vocabulary 8000 vs 4000 | 2.1 sd | 0.5 sd |
+| min\_count | 0.5 sd | 0.1 sd |
+
+Lowercasing is a default this pipeline uses and is currently marked `holds`.
+At 0.9 sd it would not be.
+
+It has not been rescaled here, because 0.0152 is the floor for a *pipeline
+parameter* difference and these three are *tokenisation* differences, which
+rebuild the vocabulary and so plausibly deserve a wider floor, not the same
+one. Substituting it would be a second guess wearing the clothes of a
+correction. The honest state is: **three sigmas in this README are quoted
+against a floor known to be wrong, in the direction that flatters them, and
+the right floor has never been measured.** That measurement is the next thing
+this repository owes.
+
+The remaining held-out claims that have never been put through the sweep are
+listed by `sens claims --audit` every time, rather than trusting that
+somebody will remember. Leaving it unreported is how the block phase sat
+unmeasured in a docstring for a dozen commits.
 
 ## Everything measured, in one table
 
 Twelve rounds of measurement, with the effect sizes and whether they held up
 on a [second corpus](#does-any-of-it-generalise). Held-out figures are
-Spearman differences against a noise floor of 0.0076; analogy figures are
-form-rate differences against a floor of 1.6%. Each row links to the section
+Spearman differences against a noise floor of 0.0152; analogy figures are
+form-rate differences against a floor of 1.70%. Each row links to the section
 that produced it.
+
+Three rows quote a floor of 0.0038 instead — lowercasing, vocabulary size and
+`min_count`. That is the *original* seed-only floor, superseded three times
+since, and those three sigmas are correspondingly about four times too
+generous. They are left standing here rather than silently rescaled because
+the right floor for a tokenisation comparison has never been measured and
+substituting 0.0152 would be a second guess dressed as a correction. See
+[the floor that three claims never got](#the-floor-that-three-claims-never-got).
 
 | what was tested | novels | expository | verdict |
 | --- | --- | --- | --- |
@@ -176,8 +236,8 @@ that produced it.
 | [cosine vs Euclidean](#is-cosine-the-right-question-to-ask) | +5.7 pts · 3.4 sd | +4.0 pts · p 0.006 | holds |
 | [1/distance vs flat window](#auditing-the-rest-of-the-defaults) | +0.086 · 5.6 sd | +0.118 · 7.8 sd | **instrument-dependent** |
 | [exponent 1.0 vs 0.5](#being-wrong-about-a-default) | +0.108 · 7.1 sd | +0.128 · 8.4 sd | holds |
-| [pruning: min weight 1 vs 0](#auditing-the-rest-of-the-defaults) | +0.053 · 3.5 sd | +0.083 · 5.5 sd | holds |
-| [shift 1 vs 2](#auditing-the-rest-of-the-defaults) | +0.043 · 2.8 sd | +0.041 · 2.7 sd | marginal |
+| [pruning: min weight 1 vs 0](#auditing-the-rest-of-the-defaults) | +0.053 · 3.5 sd | +0.083 · 5.5 sd | **instrument-dependent** |
+| [shift 1 vs 2](#auditing-the-rest-of-the-defaults) | +0.043 · 2.8 sd | +0.041 · 2.7 sd | **instrument-dependent** |
 | [lowercasing vs keeping case](#tokenisation-the-last-stage-and-two-defaults-that-lose) | +0.013 · 3.4 sd, and 15% more vocabulary | +0.014 · 5.3 sd | holds |
 | [magnitude vs sign ranking](#ranking-by-magnitude-earns-its-place-the-negatives-do-not) | +2.4 pts top-1; 0 of 12 random draws matched | 16.9% vs 13.5% random | holds |
 | [smoothing: alpha 1.0 vs 0.75](#auditing-the-rest-of-the-defaults) | +0.004 · 0.3 sd | — | **no effect** |
@@ -1439,7 +1499,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              413 tests
+tests/              428 tests
 ```
 
 ```bash

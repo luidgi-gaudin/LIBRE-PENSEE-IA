@@ -575,6 +575,31 @@ def cmd_robustness(args: argparse.Namespace) -> int:
     works = corpus.available(args.collection)
     if not works:
         sys.exit(f"no {args.collection} corpus on disk")
+
+    if args.rulers:
+        print("re-measuring every claim against each ground truth; ~40 builds",
+              file=sys.stderr)
+        effects = robustness_mod.ruler_sweep(
+            [w.path for w in works],
+            progress=lambda r, c: print(f"  {r} / {c}", file=sys.stderr,
+                                        flush=True),
+        )
+        labels = [label for label, _ in robustness_mod.RULERS]
+        print("\n  " + f"{'claim':<22} "
+              + "  ".join(f"{label:>13}" for label in labels) + "   verdict")
+        for name, measured in effects.items():
+            cells = "  ".join(
+                f"{measured[label]:+13.4f}" if label in measured
+                else f"{'·':>13}"
+                for label in labels
+            )
+            flipped = robustness_mod.reverses(measured)
+            print(f"  {name:<22} {cells}   "
+                  f"{'REVERSES' if flipped else 'stable'}")
+        print("\n  a dot is a refusal, not a gap: that ruler varies the very"
+              "\n  parameter the claim is about, so it cannot arbitrate it.")
+        return 0
+
     print("varying each incidental choice in turn; several minutes",
           file=sys.stderr)
     axes = robustness_mod.probe(
@@ -744,6 +769,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--collection", default="novels",
                    choices=sorted(corpus.COLLECTIONS))
     p.add_argument("--seed-floor", type=float, default=0.0047)
+    p.add_argument("--rulers", action="store_true",
+                   help="re-measure every claim against several ground truths")
     p.set_defaults(func=cmd_robustness)
 
     p = sub.add_parser("demo", help="a guided tour of the results")

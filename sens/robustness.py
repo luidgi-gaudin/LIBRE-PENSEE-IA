@@ -175,6 +175,95 @@ def probe_analogy(
     return list(axes.values())
 
 
+RULERS: tuple[tuple[str, dict], ...] = (
+    ("frozen a=0.75", {}),
+    ("a=1.0", {"alpha": 1.0}),
+    ("a=0.5", {"alpha": 0.5}),
+    ("window 2", {"window": 2}),
+)
+
+
+def ruler_sweep(
+    paths: list[str],
+    rulers: tuple[tuple[str, dict], ...] = RULERS,
+    progress=None,
+) -> dict[str, dict[str, float]]:
+    """Re-measure every re-derivable claim against several ground truths.
+
+    Returns `{claim id: {ruler label: effect}}`.
+
+    The point is direction, not magnitude. A claim whose sign depends on how
+    the yardstick was parameterised is telling you something about the
+    yardstick; one that keeps its sign across all of them is telling you
+    something about the language.
+
+    Each ruler is built once and its default space scored once, so the cost
+    is one build per claim per ruler rather than two.
+    """
+    from .audit import build_ruler
+    from .claims import REGISTER
+    from .pipeline import Config
+
+    base = Config()
+    claims = [c for c in REGISTER if c.verifiable]
+    results: dict[str, dict[str, float]] = {c.id: {} for c in claims}
+
+    for label, overrides in rulers:
+        ruler = build_ruler(paths, ruler_overrides=overrides)
+        default = ruler.score(base)
+        for claim in claims:
+            if confounded(claim, overrides):
+                continue
+            if progress:
+                progress(label, claim.id)
+            recipe = claim.check
+            alternative = ruler.score(
+                Config(**{**base.as_dict(), recipe.parameter: recipe.against})
+            )
+            results[claim.id][label] = default - alternative
+    return results
+
+
+def confounded(claim, overrides: dict) -> bool:
+    """Whether a ruler is disqualified from checking this particular claim.
+
+    A ruler that moves the same parameter the claim is about is not an
+    independent yardstick for it. Asking whether `alpha=1.0 beats alpha=0.75`
+    survives a ground truth rebuilt at alpha=1.0 is asking whether a
+    measurement agrees with itself; the answer is not evidence either way,
+    and on the first sweep it produced the largest apparent swing of any
+    claim — from +0.0042 to -0.0424 — which read as a dramatic reversal and
+    was an artefact of the check overlapping the thing checked.
+
+    So those cells are left empty rather than filled with a number that
+    looks like a result.
+    """
+    return claim.check is not None and claim.check.parameter in overrides
+
+
+def reverses(effects: dict[str, float], floor: float | None = None) -> bool:
+    """Whether an effect meaningfully changes sign across its rulers.
+
+    "Meaningfully" is doing real work. The first version of this asked only
+    whether the signs disagreed, and on the first full sweep it reported five
+    reversals out of ten. Two of those were `alpha-smoothing-off` and
+    `window-4-vs-6`, claims already registered as *no effect* at 0.3 sd. An
+    effect that never rose above the noise has no direction to lose, and
+    flagging it as instrument-dependent would dress up a coin toss as a
+    finding — the precise mistake this module exists to catch.
+
+    So a reversal requires the effect to clear the floor on both sides of the
+    flip. `floor` defaults to the held-out effect floor; pass 0.0 to recover
+    the naive sign comparison.
+    """
+    from .claims import EFFECT_SD
+
+    if floor is None:
+        floor = EFFECT_SD
+    above = [e for e in effects.values() if abs(e) > floor]
+    return len({e > 0 for e in above}) > 1
+
+
 def combined(axes: list[Axis]) -> float:
     """Total uncertainty, treating the axes as independent.
 

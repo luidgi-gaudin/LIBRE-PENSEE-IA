@@ -72,9 +72,9 @@ CONTROLS: dict[str, str] = {
         "the metric has no structural reason to prefer the winner"
     ),
     "ruler-invariant": (
-        "the effect keeps its direction when the ground truth itself is "
-        "rebuilt with different parameters — the yardstick has settings too, "
-        "and one 5.6 sd claim reverses sign when they change"
+        "the effect was re-measured with the ground truth itself rebuilt at "
+        "different parameters — the yardstick has settings too, and three "
+        "claims of the ten swept reverse sign when they change"
     ),
 }
 
@@ -247,9 +247,9 @@ REGISTER: tuple[Claim, ...] = (
         sigma=23.2,
         controls=_c("noise-floor", "second-corpus", "held-out",
                     "ruler-invariant"),
-        note="largest effect measured here, and the only one confirmed to "
-             "keep its direction under a rebuilt ground truth: +0.353, "
-             "+0.270, +0.327 across three ruler definitions",
+        note="largest effect measured here, and it keeps its direction under "
+             "every rebuilt ground truth tried: +0.353, +0.270, +0.327, "
+             "+0.296 across four ruler definitions",
         effect=0.3531,
         effect_expository=0.4787,
         unit="spearman",
@@ -264,7 +264,10 @@ REGISTER: tuple[Claim, ...] = (
         novels="+0.2669 spearman",
         expository="+0.2802 spearman",
         sigma=17.6,
-        controls=_c("noise-floor", "second-corpus", "held-out"),
+        controls=_c("noise-floor", "second-corpus", "held-out",
+                    "ruler-invariant"),
+        note="direction survives every ruler rebuild: +0.267, +0.321, "
+             "+0.279, +0.263",
         effect=0.2669,
         effect_expository=0.2802,
         unit="spearman",
@@ -295,11 +298,12 @@ REGISTER: tuple[Claim, ...] = (
         controls=_c("noise-floor", "second-corpus", "held-out",
                     "ruler-invariant"),
         note="held at 5.6 sd and replicated, and it still reverses sign "
-             "when the ground truth is rebuilt with alpha 1.0 or 0.5. The "
-             "two claims measured alongside it kept their direction, so "
-             "this is a property of this effect rather than of the check. "
-             "Real under the ruler this repository froze, and that ruler is "
-             "one defensible choice among several",
+             "when the ground truth is rebuilt with alpha 1.0 or 0.5: "
+             "+0.0858, -0.0099, -0.0165, +0.1219 across four rulers. Five "
+             "of the nine claims swept alongside it kept their direction, "
+             "so this is a property of this effect rather than of the "
+             "check. Real under the ruler this repository froze, and that "
+             "ruler is one defensible choice among several",
         effect=0.0858,
         effect_expository=0.1179,
         unit="spearman",
@@ -317,7 +321,8 @@ REGISTER: tuple[Claim, ...] = (
                     "unbiased-metric", "ruler-invariant"),
         note="both curves turn over at an interior optimum, which rules out "
              "the metric merely rewarding reconstruction; and the direction "
-             "survives rebuilding the ruler (+0.108, +0.051, +0.123)",
+             "survives rebuilding the ruler (+0.108, +0.051, +0.123, "
+             "+0.102)",
         effect=0.1083,
         effect_expository=0.1283,
         unit="spearman",
@@ -331,8 +336,11 @@ REGISTER: tuple[Claim, ...] = (
         novels="+0.0822 spearman",
         expository="+0.0837 spearman",
         sigma=5.4,
-        controls=_c("noise-floor", "second-corpus", "held-out"),
-        note="on held-out only; on analogy the two are indistinguishable",
+        controls=_c("noise-floor", "second-corpus", "held-out",
+                    "ruler-invariant"),
+        note="on held-out only; on analogy the two are indistinguishable. "
+             "Direction survives every ruler rebuild, and grows under one: "
+             "+0.082, +0.093, +0.190, +0.076",
         effect=0.0822,
         effect_expository=0.0837,
         unit="spearman",
@@ -342,11 +350,21 @@ REGISTER: tuple[Claim, ...] = (
         id="pair-pruning",
         what="discarding pairs seen once or less beats keeping everything",
         section="auditing-the-rest-of-the-defaults",
-        status="holds",
-        novels="+0.0533 spearman",
-        expository="+0.0832 spearman",
+        status="instrument-dependent",
+        novels="+0.0533 spearman under the frozen ruler; -0.0212 and "
+               "-0.0453 under two others",
+        expository="+0.0832 spearman under the frozen ruler",
         sigma=3.5,
-        controls=_c("noise-floor", "second-corpus", "held-out"),
+        controls=_c("noise-floor", "second-corpus", "held-out",
+                    "ruler-invariant"),
+        note="the second claim found to reverse, and found only because the "
+             "check that caught the first was generalised to run over the "
+             "whole register instead of the three claims that were handy: "
+             "+0.0533, -0.0212, -0.0453, +0.0838. Replicated on a second "
+             "corpus and still a fact about the yardstick as much as about "
+             "the language. Pruning helps when the ground truth is built "
+             "with alpha 0.75 and hurts when it is built with alpha 1.0 — "
+             "which is the value the model itself uses",
         effect=0.0533,
         effect_expository=0.0832,
         unit="spearman",
@@ -356,11 +374,18 @@ REGISTER: tuple[Claim, ...] = (
         id="no-shift",
         what="not shifting PMI beats shifting it",
         section="auditing-the-rest-of-the-defaults",
-        status="marginal",
-        novels="+0.0426 spearman",
-        expository="+0.0408 spearman",
+        status="instrument-dependent",
+        novels="+0.0426 spearman under the frozen ruler; -0.0201 under one "
+               "other",
+        expository="+0.0408 spearman under the frozen ruler",
         sigma=2.8,
-        controls=_c("noise-floor", "second-corpus", "held-out"),
+        controls=_c("noise-floor", "second-corpus", "held-out",
+                    "ruler-invariant"),
+        note="+0.0426, -0.0201, +0.0224, +0.0415. The flip is the smallest "
+             "of the three and clears the floor by a whisker, so this is "
+             "the weakest of the instrument-dependent findings; it is "
+             "recorded at the same status because the alternative is a "
+             "threshold chosen after seeing which claims it would spare",
         effect=0.0426,
         effect_expository=0.0408,
         unit="spearman",
@@ -422,7 +447,11 @@ REGISTER: tuple[Claim, ...] = (
         note="the default moved to 1.0 on a 2.4 sd result. Re-derived "
              "after the document-split fix it is 0.9 sd — within noise. The "
              "two settings are indistinguishable; 1.0 stays because it is "
-             "the simpler of two equals, not because it is better",
+             "the simpler of two equals, not because it is better. This is "
+             "the one claim the ruler sweep cannot check: three of the four "
+             "rulers vary alpha, which is the parameter the claim is about, "
+             "and a yardstick built at the value under test agrees with "
+             "itself by construction",
         effect=0.0042,
         unit="spearman",
         check=ConfigDelta("alpha", 0.75),
@@ -444,8 +473,11 @@ REGISTER: tuple[Claim, ...] = (
         status="no-effect",
         novels="+0.0219 spearman",
         sigma=1.4,
-        controls=_c("noise-floor", "held-out"),
-        note="recorded at 2.0 sd, then 4.0, then 4.6, then 2.0, now 1.4. "
+        controls=_c("noise-floor", "held-out", "ruler-invariant"),
+        note="+0.0219, +0.0249, +0.0281 under three rulers — the fourth "
+             "varies the window itself and cannot check a claim about the "
+             "window. Recorded at 2.0 sd, then 4.0, then 4.6, then 2.0, "
+             "now 1.4."
              "Moved twice by a stale baseline and twice more by a noise "
              "floor that kept turning out to be missing an axis. Nothing "
              "about the measurement changed; only what it was compared to",
@@ -462,8 +494,10 @@ REGISTER: tuple[Claim, ...] = (
         status="no-effect",
         novels="-0.0039 spearman",
         sigma=0.3,
-        controls=_c("noise-floor", "held-out"),
-        note="anything between 4 and 6 is the same, and which of them is "
+        controls=_c("noise-floor", "held-out", "ruler-invariant"),
+        note="-0.0039, -0.0071, -0.0055 under three rulers, none of them "
+             "clearing the floor, so there is no direction here to lose. "
+             "Anything between 4 and 6 is the same, and which of them is "
              "nominally ahead flips with the baseline — it flipped when the "
              "alpha default moved",
         effect=-0.0039,
