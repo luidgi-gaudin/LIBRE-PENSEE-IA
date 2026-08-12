@@ -1063,12 +1063,45 @@ fail  : failed  :: point   : raw=gives    compressed=completed
 ```
 
 Raw returns bare verbs and modals; it has the semantic neighbourhood and not
-the tense. One correlate is measurable — novels' `-ed` rows are more diffuse
-than expository ones, 61.6 non-zeros against 47.0 and entropy 3.686 against
-3.480 — but every row in the novel corpus is denser, so this may be a
-property of the corpus rather than of its past tense. Four explanations have
-already died in this README from being tidier than their evidence, so it is
-recorded as a correlate and not as a cause.
+the tense. Two explanations were available and both are now dead, which is worth more
+than either would have been alive.
+
+**Diffuseness.** Novels' `-ed` rows carry more contexts than expository ones,
+61.6 non-zeros against 47.0, entropy 3.686 against 3.480. If that is the
+cause then concentrating the rows should fix it, so the rows were pruned to
+keep only their strongest contexts:
+
+```
+top-k kept   mean nnz   raw gives -ed
+       all       96.6           25.0%
+       100       56.9           26.7%
+        47       40.5           25.0%
+        30       29.3           18.3%
+```
+
+Pruned to below expository density, the rate does not move at all — 25.0%
+against 25.0% — and pruning harder makes it worse. Density is not the
+mechanism, and this one died to an intervention rather than an observation,
+which is the stronger way to lose an argument.
+
+**Word selection.** Perhaps the two corpora simply form past-tense pairs from
+different verbs. The 77 pairs they share — `accept`/`accepted`,
+`allow`/`allowed`, `answer`/`answered` — make one question set both can be
+asked:
+
+```
+same 120 questions      raw gives -ed   compressed gives -ed
+novels                          28.3%                  55.0%
+expository                      46.7%                  45.8%
+```
+
+Identical words, identical questions, and the gap survives: z = 2.94,
+p = 0.003. The two corpora represent *the same verbs* differently.
+
+So the effect is real, it is not the vocabulary, it is not the density, it is
+not any gross property of the corpora, and I do not know what it is. Five
+explanations have now died in this README from being tidier than their
+evidence. Leaving a hole seems better than digging a sixth.
 
 I nearly reported two reversals here and both were noise. At `limit=60`,
 Euclidean appeared to beat cosine and the form curve appeared to rise; a
