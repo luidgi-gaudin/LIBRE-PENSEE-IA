@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 255 tests. 40 seconds end to end.
+and an audit of every default. 260 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -129,7 +129,9 @@ One detail worth keeping: the second-largest eigenvalue of this matrix is
 directions are not all positive ones, and a factorisation that ranked by
 eigenvalue instead of by magnitude would throw that axis away. Ranking by
 `|λ|` is what makes this a truncated SVD rather than a truncated
-eigendecomposition. It is measured below, and it is worth a factor of two.
+eigendecomposition, and rank by signed value instead and you discard the
+second most important direction in the matrix. [Measured below](#ranking-by-magnitude-earns-its-place-the-negatives-do-not)
+— though not with the result I first reported.
 
 ## Measuring it
 
@@ -320,7 +322,7 @@ which word is which; a space with 48 has had to decide what words have in
 common. 64 is where this corpus puts the knee, which is why the default sits
 there rather than at the number that maximises either metric alone.
 
-## Being wrong about a default## Being wrong about a default
+## Being wrong about a default
 
 The eigenvalue exponent used to be 0.5, which is the conventional choice and
 which a comment in `pipeline.py` used to defend by citation. It is now 1.0,
@@ -362,33 +364,75 @@ The generalisation gap narrowing as the exponent rises is the other half of
 it — the flatter weightings are the ones fitting their own half of the corpus
 hardest relative to what transfers.
 
-## The negative eigenvalues earn their place
+## Ranking by magnitude earns its place; the negatives do not
 
-This experiment confirmed a design decision instead of upsetting one. It is
-dimension-matched, which is the only thing that makes it mean anything —
-comparing a 49-axis space against a 64-axis one would measure dimensionality,
-not sign.
+This section used to be called "The negative eigenvalues earn their place",
+and it explained a real effect with the wrong cause. It was dimension-matched,
+which I thought made it safe. It was not. The missing control is one line: a
+random subset of the same size.
 
 ```
 configuration          dims    top1    top5    form
 top 47 by |lambda|       47    4.8%   13.3%   22.6%
 positive only (47)       47    2.4%    7.1%   11.9%
-negative only (17)       17    0.5%    1.7%   15.5%
+random 47 (8 draws)      47    3.0%   10.3%   17.9%
 all 64                   64    4.5%   13.1%   24.0%
 ```
 
-Same number of axes, double the accuracy, purely from letting 17
-negative-eigenvalue directions in. Ranking by `|λ|` was argued earlier in
-this README on theoretical grounds; it turns out to be worth a factor of two.
+Selecting the positive-eigenvalue directions is **worse than selecting at
+random**. Over twelve draws the random control averages 3.3% top-1 with a
+standard deviation of 0.5% and never falls below 2.4%; positive-only sits at
+the very bottom of that range, and on form its 11.9% is below the entire
+random spread of 16.9%–21.7%.
 
-The third row is the strangest. Those 17 directions, alone, score almost
-nothing on accuracy — 0.5% — while reaching a 15.5% form rate, *higher* than
-all 47 positive directions together manage. Whatever they encode is closer to
-*what kind of word this is* than to *which word this is*.
+That kills the original explanation. The negatives are not carrying some
+special signal the positives lack — if they were, the positive-only set would
+merely be *missing* something, not performing worse than a coin toss over the
+same number of axes. What is actually happening is that selecting for
+positive eigenvalues systematically excludes the *largest* directions, which
+a random draw would have included in proportion. Sign is anti-correlated with
+importance here, so choosing on it is worse than not choosing at all.
 
-On this build the second-largest eigenvalue is **−153.1**, so the objection
-is not hypothetical: rank by signed eigenvalue and you discard the second
-most important direction in the matrix.
+The design decision survives, and more cleanly than before. Magnitude-ranking
+beats random too: 0 of 12 random draws reached its 4.8%. So `|λ|` predicts how
+much a direction matters and sign predicts nothing. On this build the
+second-largest eigenvalue is −153.1 — rank by signed value and that direction
+is the first thing you throw away.
+
+I also over-corrected once on the way here. My first pass at this retraction
+used three random draws, saw positive-only ≈ random, and concluded the
+experiment showed nothing at all. Three draws could not support that either;
+the standard deviation is large enough that any one of them could have said
+whatever I wanted. `ablate_signs` now pools eight draws by default and
+generates them itself, so neither the original error nor my correction to it
+can be made silently again.
+
+## How accurate is the factorisation, actually?
+
+Not very, past the leading directions — which is worth knowing before reading
+any eigenvalue in this README too closely.
+
+Against a much more careful reference (12 power iterations, oversample 48),
+the default settings give a mean relative eigenvalue error of **35%** and a
+worst case of **75%**. The top ten are fine, at 2.6%. Eigenvalue *signs* agree
+with the reference for only 43 of 64 directions, and in the bottom half that
+is barely better than a coin toss — which is the other reason the sign
+ablation above deserved the scepticism it got.
+
+The space itself is much less sensitive than its eigenvalues:
+
+```
+power_iterations=1              0.4780
+power_iterations=3 (default)    0.6002
+power_iterations=6              0.6092
+oversample=64                   0.6073
+```
+
+One iteration is genuinely bad. Beyond three, another 60% of build time buys
+1.5% of held-out correlation. So the default stays, and the honest statement
+is that this factorisation is accurate enough for the geometry and not
+accurate enough for its own spectrum. A PPMI matrix has a slowly decaying
+spectrum, and a randomised method separates a flat tail poorly.
 
 ## Auditing the rest of the defaults
 
@@ -535,7 +579,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              255 tests
+tests/              260 tests
 ```
 
 ```bash

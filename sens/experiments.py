@@ -14,6 +14,8 @@ instead of one full rebuild per setting.
 
 from __future__ import annotations
 
+import random
+
 from dataclasses import dataclass
 
 from .evaluate import Score, evaluate, totals
@@ -77,20 +79,35 @@ def ablate_signs(
     method: str = "3cosadd",
     limit: int = 60,
     seed: int = 20260811,
+    random_draws: int = 8,
 ) -> list[Result]:
-    """Ask whether the negative-eigenvalue directions carry anything.
+    """Compare ranking directions by `|eigenvalue|` against ranking by sign.
 
-    The comparison has to be dimension-matched or it proves nothing: a space
-    with fewer axes scores worse for reasons that have nothing to do with
-    which axes were dropped. So if `p` of the retained directions have
-    positive eigenvalues, this compares
+    Dimension-matching is necessary and, on its own, not sufficient. An
+    earlier version of this function compared only
 
-      * the `p` positive directions, and
-      * the top `p` directions by magnitude, negatives included,
+      * the top `p` directions by magnitude, and
+      * the `p` positive directions,
 
-    both of which are `p`-dimensional. If magnitude-ranking wins, the
-    negative eigenvalues were carrying signal and discarding them would be a
-    real loss. If it does not, keeping them was theory rather than benefit.
+    found the first winning by a factor of two, and concluded that the
+    negative-eigenvalue directions were carrying signal. That conclusion does
+    not survive a control. Dropping the negatives also drops several of the
+    *strongest* directions, so the positive-only set is not just
+    sign-filtered, it is weakened — and it turns out to score no better than
+    `p` axes chosen at random.
+
+    So a random control of the same size is included now, pooled over several
+    draws because a single draw is noisy enough to mislead in either
+    direction. A configuration only tells you something about sign if it
+    departs from random selection at the same dimensionality.
+
+    With the control in place the design decision comes out validated and the
+    explanation comes out replaced. Magnitude-ranking beats random. Sign-
+    ranking loses to random — not merely ties with it — because selecting for
+    positive eigenvalues systematically excludes the largest directions,
+    which a random draw would have included in proportion. Magnitude predicts
+    how much a direction matters; sign predicts nothing, and selecting on it
+    is actively worse than not selecting at all.
     """
     positive = space.positive_dimensions()
     negative = space.negative_dimensions()
@@ -100,30 +117,46 @@ def ablate_signs(
     count = len(positive)
     # Dimensions come out of the factorisation already ordered by |eigenvalue|,
     # so the top `count` by magnitude is just the first `count` indices.
-    by_magnitude = list(range(count))
-
-    return [
+    results = [
         Result(
             label=f"top {count} by |lambda|",
             dims=count,
-            score=_score(space.subspace(by_magnitude), method, limit, seed),
+            score=_score(space.subspace(list(range(count))), method, limit, seed),
         ),
         Result(
             label=f"positive only ({count})",
             dims=count,
             score=_score(space.subspace(positive), method, limit, seed),
         ),
+    ]
+    # Pool the random draws into one row. Each draw answers the same
+    # questions, so summing the counts gives the mean rate with `draws` times
+    # the sample behind it, which is what makes the comparison readable.
+    pooled = Score(method=method, category="random", asked=0, top1=0, top5=0)
+    for draw in range(random_draws):
+        picked = sorted(
+            random.Random(seed + draw).sample(range(space.dim), count)
+        )
+        one = _score(space.subspace(picked), method, limit, seed)
+        pooled.asked += one.asked
+        pooled.top1 += one.top1
+        pooled.top5 += one.top5
+        pooled.form += one.form
+    results.append(
         Result(
-            label=f"negative only ({len(negative)})",
-            dims=len(negative),
-            score=_score(space.subspace(negative), method, limit, seed),
-        ),
+            label=f"random {count} ({random_draws} draws)",
+            dims=count,
+            score=pooled,
+        )
+    )
+    results.append(
         Result(
             label=f"all {space.dim}",
             dims=space.dim,
             score=_score(space, method, limit, seed),
-        ),
-    ]
+        )
+    )
+    return results
 
 
 @dataclass

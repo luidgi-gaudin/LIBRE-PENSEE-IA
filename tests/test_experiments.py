@@ -8,6 +8,7 @@ factorisation, and that a dimension-matched ablation really is matched.
 
 from __future__ import annotations
 
+import random
 import unittest
 
 from sens.experiments import (
@@ -186,10 +187,54 @@ class TestAblateSigns(unittest.TestCase):
         results = ablate_signs(morphological(), limit=6)
         self.assertEqual(results[0].dims, results[1].dims)
 
-    def test_it_reports_four_configurations(self):
+    def test_it_reports_the_full_set_of_configurations(self):
+        # magnitude, positive-only, the pooled random control, everything.
         results = ablate_signs(morphological(), limit=6)
         self.assertEqual(len(results), 4)
         self.assertEqual(results[-1].dims, 7)
+
+    def test_the_random_control_is_dimension_matched_too(self):
+        # Without it the experiment cannot distinguish "sign matters" from
+        # "you dropped some strong dimensions", which is the mistake this
+        # function was originally making.
+        results = ablate_signs(morphological(), limit=6)
+        control = next(r for r in results if r.label.startswith("random"))
+        self.assertEqual(control.dims, results[0].dims)
+
+    def test_the_random_control_pools_every_draw(self):
+        # Pooling is what makes the row readable: one draw is noisy enough
+        # to point either way.
+        single = ablate_signs(morphological(), limit=6, random_draws=1)
+        many = ablate_signs(morphological(), limit=6, random_draws=4)
+        one = next(r for r in single if r.label.startswith("random"))
+        four = next(r for r in many if r.label.startswith("random"))
+        self.assertEqual(four.score.asked, one.score.asked * 4)
+
+    def test_random_draws_differ_from_each_other(self):
+        space = Space(
+            words=[f"w{i}" for i in range(12)],
+            vectors=[[float((i * j) % 5) for j in range(9)] for i in range(12)],
+            meta={"eigenvalues": [9.0, -8.0, 7.0, 6.0, -5.0, 4.0, 3.0, -2.0, 1.0],
+                  "config": {}},
+        )
+        picked = [
+            sorted(random.Random(20260811 + d).sample(range(9), 6))
+            for d in range(3)
+        ]
+        self.assertEqual(len(picked), len({tuple(p) for p in picked}))
+
+    def test_random_draws_are_reproducible(self):
+        space = morphological()
+        first = ablate_signs(space, limit=6, seed=5)
+        second = ablate_signs(space, limit=6, seed=5)
+        self.assertEqual([r.label for r in first], [r.label for r in second])
+        self.assertEqual(
+            [r.score.top1 for r in first], [r.score.top1 for r in second]
+        )
+
+    def test_random_draw_count_is_configurable(self):
+        results = ablate_signs(morphological(), limit=6, random_draws=1)
+        self.assertIn("1 draws", [r.label for r in results][2])
 
     def test_a_space_with_no_negative_eigenvalues_has_nothing_to_ablate(self):
         space = Space(
