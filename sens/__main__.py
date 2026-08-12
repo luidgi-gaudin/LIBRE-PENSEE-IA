@@ -10,6 +10,7 @@
     python -m sens sweep
     python -m sens heldout
     python -m sens baseline
+    python -m sens audit
     python -m sens demo
     python -m sens info
 """
@@ -25,6 +26,7 @@ from . import evaluate as evaluate_mod
 from . import experiments
 from . import heldout as heldout_mod
 from . import baseline as baseline_mod
+from . import audit as audit_mod
 from .pipeline import Config, build
 from .space import Space
 
@@ -358,6 +360,41 @@ def cmd_baseline(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_audit(args: argparse.Namespace) -> int:
+    works = corpus.available()
+    if not works:
+        sys.exit("no corpus files found; run `python -m sens fetch`")
+
+    print("building the ruler (fixed vocabulary, truth table and pairs)",
+          file=sys.stderr)
+    ruler = audit_mod.build_ruler(
+        [w.path for w in works], seed=args.seed
+    )
+    print(
+        f"vocab {len(ruler.vocab):,}   train {len(ruler.train):,}   "
+        f"test {len(ruler.test):,}   pairs {len(ruler.pairs):,}\n"
+    )
+    print("this rebuilds the space once per value; expect several minutes\n",
+          file=sys.stderr)
+
+    def progress(parameter, value):
+        print(f"  building {parameter}={value} ...", file=sys.stderr, flush=True)
+
+    findings = audit_mod.audit(ruler, progress=progress)
+    print("held-out spearman, one parameter varied at a time")
+    for finding in findings:
+        print("  " + finding.row)
+
+    wrong = [f for f in findings if not f.default_wins]
+    print()
+    if wrong:
+        for f in wrong:
+            print(f"  {f.parameter}: default {f.default} loses to {f.best[0]}")
+    else:
+        print("  every default is the best value on this grid")
+    return 0
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     space = _load(args.space)
     meta = space.meta
@@ -449,6 +486,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--limit", type=int, default=120)
     p.add_argument("--seed", type=int, default=20260811)
     p.set_defaults(func=cmd_baseline)
+
+    p = sub.add_parser(
+        "audit", help="check every default against a fixed ruler (slow)"
+    )
+    p.add_argument("--seed", type=int, default=20260811)
+    p.set_defaults(func=cmd_audit)
 
     p = sub.add_parser("demo", help="a guided tour of the results")
     p.set_defaults(func=cmd_demo)

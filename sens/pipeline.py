@@ -31,7 +31,7 @@ class Config:
     window: int = 4
     harmonic: bool = True
     min_pair_weight: float = 1.0
-    alpha: float = 0.75
+    alpha: float = 1.0
     shift: float = 1.0
     dim: int = 64
     oversample: int = 16

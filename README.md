@@ -8,17 +8,17 @@ lands on `her`, and where the line from `sea` to `land` sorts `harpoon` from
 Pure Python. No NumPy, no SciPy, no dependencies of any kind. Every
 multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
-corpus fetcher, and three independent ways of measuring whether any of it
-works — including a control that compares it against not compressing at all.
-232 tests. 42 seconds end to end.
+corpus fetcher, and the measurement apparatus — a benchmark, a held-out
+generalisation test, a control that compares against not compressing at all,
+and an audit of every default. 250 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
   read           1,771,272 tokens from 6 file(s)       1.7s
   vocabulary     4,000 types, 90.5% of tokens kept     0.4s
-  co-occurrence  742,430 pairs, 4.6% dense             4.2s
-  ppmi           522,603 positive, 70.4% of pairs      0.2s
-  factorise      64 dims, eigenvalue spread   26.6x   35.2s
+  co-occurrence  742,430 pairs, 4.6% dense             3.0s
+  ppmi           567,932 positive, 76.5% of pairs      0.2s
+  factorise      64 dims, eigenvalue spread   28.4x   35.3s
 
 $ python -m sens demo
 ```
@@ -31,14 +31,14 @@ fixed.
 
 ```
 whale                    captain                  sea
-  sperm      +0.9117       ahab       +0.8333       water    +0.8349
-  greenland  +0.8458       stubb      +0.8182       beneath  +0.8315
-  ship       +0.8371       mate       +0.7959       clouds   +0.8122
-  bone       +0.8131       steelkilt  +0.7950       wind     +0.8084
-  fish       +0.8088       queequeg   +0.7946       ship's   +0.8040
-  pequod's   +0.7632       starbuck   +0.7856       ocean    +0.8015
-  whale's    +0.7558       ship       +0.7596       sky      +0.7782
-  whales     +0.7558       peleg      +0.7520       ship     +0.7662
+  sperm      +0.9077       ahab       +0.8354       ship's   +0.8307
+  ship       +0.8345       starbuck   +0.8288       water    +0.8239
+  greenland  +0.8319       stubb      +0.8170       ocean    +0.8188
+  fish       +0.7989       queequeg   +0.8123       beneath  +0.8048
+  bone       +0.7841       peleg      +0.7890       clouds   +0.8009
+  sea        +0.7673       mate       +0.7877       wind     +0.7973
+  pequod's   +0.7654       ship       +0.7820       sky      +0.7824
+  whales     +0.7420       steelkilt  +0.7719       fish     +0.7742
 ```
 
 It has never been told that Ahab and Starbuck are both people on a ship. It
@@ -49,21 +49,21 @@ direction from `sea` to `land` and project unrelated words onto it:
 
 ```
 sea  <------------------->  land
-  whale    -0.3127
-  ship     -0.2872
-  deck     -0.2109
-  mast     -0.1641
-  harpoon  -0.0994
-  sailor   -0.0627
+  whale    -0.3410
+  ship     -0.2488
+  deck     -0.1988
+  mast     -0.1344
+  sailor   -0.0839
+  harpoon  -0.0573
   ------------------ 0
-  horse    +0.0775
-  garden   +0.1033
-  door     +0.1105
-  forest   +0.1226
-  road     +0.1915
-  field    +0.2145
-  village  +0.2761
-  house    +0.3085
+  garden   +0.0944
+  horse    +0.1147
+  door     +0.1199
+  forest   +0.1454
+  field    +0.1885
+  road     +0.1912
+  house    +0.2799
+  village  +0.2837
 ```
 
 Fourteen words, no errors, and the zero crossing falls exactly where a person
@@ -124,8 +124,8 @@ above, and the measurement is below.
 **5. Geometry.** Scale each axis by `|eigenvalue|`, normalise, and ask
 questions with dot products.
 
-One detail worth keeping: the fourth-largest eigenvalue of this matrix is
-**−98.8**. A PPMI matrix is symmetric but *indefinite*, so its strongest
+One detail worth keeping: the second-largest eigenvalue of this matrix is
+**−153.1**. A PPMI matrix is symmetric but *indefinite*, so its strongest
 directions are not all positive ones, and a factorisation that ranked by
 eigenvalue instead of by magnitude would throw that axis away. Ranking by
 `|λ|` is what makes this a truncated SVD rather than a truncated
@@ -149,25 +149,24 @@ own filter: a bad stem yields a non-word, and non-words are not in the top
 ```
              3cosadd                   3cosmul
                top1    top5    form      top1    top5    form
-plural         5.0%   18.3%   34.2%    4.2%   18.3%   33.3%
-past           1.7%    7.5%   23.3%    1.7%    5.0%   22.5%
-progressive    1.7%    6.7%   18.3%    1.7%    5.0%   14.2%
-adverb         1.7%    4.2%   17.5%    1.7%    5.0%   11.7%
-possessive    15.0%   38.3%   56.7%   11.7%   39.2%   59.2%
-er-form        0.8%    4.2%    0.8%    0.8%    3.3%    0.8%
-negation       2.5%   10.0%    3.3%    1.7%   10.0%    5.0%
-ALL            4.0%   12.7%   22.0%    3.3%   12.3%   21.0%
+plural         5.8%   22.5%   35.0%    6.7%   16.7%   37.5%
+past           3.3%    5.8%   24.2%    3.3%    5.8%   24.2%
+progressive    2.5%   10.0%   21.7%    2.5%    8.3%   19.2%
+adverb         1.7%    5.0%   15.8%    1.7%    4.2%   13.3%
+possessive    11.7%   35.0%   55.8%   14.2%   39.2%   61.7%
+er-form        0.8%    3.3%    1.7%    0.0%    2.5%    0.8%
+negation       3.3%   10.0%    4.2%    1.7%   10.0%    3.3%
+ALL            4.2%   13.1%   22.6%    4.3%   12.4%   22.9%
 
 840 questions per method
 ```
 
 **The multiplicative method didn't help.** I added 3CosMul because Levy and
 Goldberg report it beating vector-offset, most of all on small corpora — this
-corpus being about as small as they come. It came out slightly worse, 3.3%
-against 4.0%. At this accuracy both are close enough to the floor that the
-difference is not worth defending in either direction, which is itself the
-finding. The prediction was clean, the measurement disagreed, and both are in
-the repository.
+corpus being about as small as they come. The two are indistinguishable here:
+4.3% against 4.2% on top-1, and the other way round on top-5. Both are close
+enough to the floor that the difference is not worth defending in either
+direction, which is itself the finding.
 
 **The `form` column is where the real result is.** It counts answers that are
 the right *kind* of word even when they are the wrong word. Asked for
@@ -178,15 +177,15 @@ friend : friend's :: bingley : darcy's     (wanted bingley's)
 count  : count's  :: dolokhov : prince's   (wanted dolokhov's)
 ```
 
-On possessives the model produces *a possessive* 57% of the time and *the
-right* possessive 15% of the time — a near-fourfold gap. The relation is in
+On possessives the model produces *a possessive* 56% of the time and *the
+right* possessive 12% of the time — a near-fivefold gap. The relation is in
 the geometry; what fails is holding onto `c` while applying it. Accuracy
 alone cannot tell `darcy's` from `darcy`, and those two failures mean
 opposite things: one says the relation was never learned, the other says it
 was learned and the identity leaked. Only the second is true here.
 
 The `er-form` row is the control that makes the rest credible. Its form rate
-is 0.8% — the floor — because `-er` is two relations wearing one suffix
+is 1.7% — the floor — because `-er` is two relations wearing one suffix
 (`bank`/`banker` is an agent, `hard`/`harder` a comparative) and no single
 direction can point two ways at once. A metric that scored everything highly
 would be measuring itself.
@@ -205,18 +204,26 @@ uncompressed PPMI rows — and ask how well 64 dimensions predict it.
 
 ```
  power       rho
-  0.00   +0.2937
-  0.25   +0.4212
-  0.50   +0.5261
-  0.75   +0.5829
-  1.00   +0.5908
-  1.25   +0.5717
-  1.50   +0.5451
+  0.00   +0.2712
+  0.25   +0.3968
+  0.50   +0.5077
+  0.75   +0.5798
+  1.00   +0.6002
+  1.25   +0.5852
+  1.50   +0.5564
 ```
 
-A Spearman of **0.59** between a 64-dimensional space and similarity measured
+A Spearman of **0.60** between a 64-dimensional space and similarity measured
 on 884,000 tokens it never saw. That is the generalisation claim, as a
 number.
+
+**The ruler is frozen, and that took a bug to learn.** A PPMI ground truth
+has all the same parameters the model has, and deriving it from the model's
+config seemed natural. Then changing the `alpha` default moved every held-out
+number by 0.14 at once — the space and the yardstick had moved together, and
+nothing had actually got worse. The reference values now live in a `RULER`
+constant that does not track `Config`. Absolute numbers depend on that
+choice; comparisons between builds, which is the entire point, do not.
 
 Cosine is compared against cosine deliberately. A dot-product reconstruction
 of PPMI values would be exactly right at exponent 0.5 and wrong everywhere
@@ -239,37 +246,42 @@ solved and the other did not — which is what McNemar's test counts.
 840 paired questions
 
   representation                  top1    top5    form
-  raw PPMI rows (4000 dims)       2.7%    9.9%   11.7%
-  compressed space (64 dims)      2.0%    7.1%   16.3%
+  raw PPMI rows (4000 dims)       2.6%    8.0%   12.6%
+  compressed space (64 dims)      2.9%    7.7%   18.9%
 
 paired significance (McNemar, disagreements only)
-  top1  raw-only=19   compressed-only=13   p=0.3768   no difference
-  top5  raw-only=57   compressed-only=34   p=0.0211   raw wins
-  form  raw-only=66   compressed-only=105  p=0.0037   compressed wins
+  top1  raw-only=17   compressed-only=19   p=0.8676   no difference
+  top5  raw-only=45   compressed-only=43   p=0.9151   no difference
+  form  raw-only=61   compressed-only=114  p=0.0001   compressed wins
 ```
 
-**Two significant results pointing opposite ways.** The raw matrix is better
-at retrieving the specific right word. The compressed space is better at
-producing the right *kind* of word. Neither representation dominates; they
-disagree about what to be good at.
+Sixty-three times fewer dimensions, no measurable cost to retrieving the
+right word, and a large, highly significant gain in producing the right
+*kind* of word. Compression is not a lossy approximation that happens to be
+cheap. On the thing it is for, it is better.
 
-Held-out similarity says the same thing from the other side. Predicting
-similarity on unseen text, the raw 4,000-dimensional rows score **0.657**
-against the compressed space's **0.591** — and the dimension curve rises
-monotonically to at least 160 without ever turning over. There is no
-compression sweet spot to be found here.
+**A comparison I had to throw away.** An earlier version of this section also
+compared the two on held-out similarity, and reported raw winning 0.657 to
+0.591. That number does not survive scrutiny. Scored against the same frozen
+ruler, the raw representation swings wildly depending on whether its own
+smoothing parameter happens to match the ruler's:
 
-So the honest summary is not the one I started with. Compression does not
-conjure predictive power out of nothing; measured on retrieval or on
-similarity it is a lossy approximation that keeps about 90% of what the raw
-counts had, at 1.6% of the dimensions. What it *does* is reallocate: it
-spends its 64 axes on what generalises across words and cannot afford what
-distinguishes them. `darcy's` for `bingley's` is that trade happening in
-public — the possessive relation survives the squeeze and the identity of the
-person does not.
+```
+raw built with alpha=0.50   rho = 0.6251
+raw built with alpha=0.75   rho = 0.6573   <-- matches the ruler's own alpha
+raw built with alpha=1.00   rho = 0.4808
+```
 
-That is a more useful thing to know than the slogan it replaced, and it is
-the same story the `form` column told earlier, arrived at independently.
+A 0.18 swing from a parameter that should be incidental — larger than any
+effect being measured. Both objects are PPMI cosines, so the raw baseline is
+rewarded for resembling the yardstick rather than for being right. The
+compressed space, at 0.6002, is nearly indifferent to the mismatch, which is
+interesting on its own but does not rescue the comparison.
+
+So the held-out metric cannot arbitrate raw against compressed, and the
+retracted number is left here rather than quietly deleted. The analogy
+benchmark can arbitrate, because its ground truth is English morphology
+rather than another PPMI table, and that is the comparison above.
 
 ## Being wrong about a default
 
@@ -295,13 +307,13 @@ was actually fitted to settles it:
 
 ```
  power   fitted rho   held-out rho     gap
-  0.00       0.4380         0.2937  0.1443
-  0.25       0.5708         0.4212  0.1495
-  0.50       0.6679         0.5261  0.1418
-  0.75       0.7060         0.5829  0.1230
-  1.00       0.6908         0.5908  0.1000
-  1.25       0.6519         0.5717  0.0801
-  1.50       0.6103         0.5451  0.0652
+  0.00       0.4183         0.2712  0.1470
+  0.25       0.5516         0.3968  0.1548
+  0.50       0.6567         0.5077  0.1490
+  0.75       0.7124         0.5798  0.1326
+  1.00       0.7116         0.6002  0.1114
+  1.25       0.6759         0.5852  0.0907
+  1.50       0.6299         0.5564  0.0736
 ```
 
 Both curves turn over. If the instrument were merely rewarding
@@ -322,20 +334,67 @@ not sign.
 
 ```
 configuration          dims    top1    top5    form
-top 49 by |lambda|       49    4.8%   13.6%   23.1%
-positive only (49)       49    2.6%    7.9%   12.4%
-negative only (15)       15    0.5%    1.9%   12.6%
-all 64                   64    4.8%   14.0%   22.9%
+top 47 by |lambda|       47    4.8%   13.3%   22.6%
+positive only (47)       47    2.4%    7.1%   11.9%
+negative only (17)       17    0.5%    1.7%   15.5%
+all 64                   64    4.5%   13.1%   24.0%
 ```
 
-Same number of axes, nearly double the accuracy, purely from letting 15
+Same number of axes, double the accuracy, purely from letting 17
 negative-eigenvalue directions in. Ranking by `|λ|` was argued earlier in
 this README on theoretical grounds; it turns out to be worth a factor of two.
 
-The third row is the strangest. Those 15 directions, alone, score almost
-nothing on accuracy — 0.5% — while reaching a 12.6% form rate, comparable to
-all 49 positive directions together. Whatever they encode is closer to *what
-kind of word this is* than to *which word this is*.
+The third row is the strangest. Those 17 directions, alone, score almost
+nothing on accuracy — 0.5% — while reaching a 15.5% form rate, *higher* than
+all 47 positive directions together manage. Whatever they encode is closer to
+*what kind of word this is* than to *which word this is*.
+
+On this build the second-largest eigenvalue is **−153.1**, so the objection
+is not hypothetical: rank by signed eigenvalue and you discard the second
+most important direction in the matrix.
+
+## Auditing the rest of the defaults
+
+Finding one wrong default raised the obvious question about the ones nobody
+had checked. `python -m sens audit` varies each parameter in turn against the
+frozen ruler, holding the rest fixed. It rebuilds the space once per value,
+so it takes several minutes.
+
+```
+window            2=0.5830  4=0.5908  6=0.5895  10=0.5834
+alpha             0.5=0.5651  0.75=0.5908  1.0=0.6002   <-- 1.0 beats 0.75
+shift             1.0=0.5908  2.0=0.5276  5.0=0.3409
+min_pair_weight   0.0=0.5171  1.0=0.5908  2.0=0.4950
+```
+
+Three of four confirmed. `alpha` was not, and it has moved to 1.0 — which
+means the context-distribution smoothing is now *off*.
+
+That is a small surprise. Raising context probabilities to the power 0.75 is
+one of the more reliably transferred tricks in the literature, and it does
+nothing useful here; the analogy benchmark agrees independently (4.2% against
+4.0%, and every category's form rate up). Note also that it wins *against* a
+ruler built with the old value, so the effect is if anything understated.
+
+I had a tidy explanation ready: smoothing exists to stop rare contexts
+earning enormous PMI scores, and a vocabulary capped at 4,000 words with a
+floor of ten occurrences has already deleted the rare tail it protects
+against. That predicts the effect should reverse with a bigger vocabulary. So
+I raised the cap to 12,000 words with a floor of three:
+
+```
+vocab  4,000 (rarest word appears 18x):  a=0.5:0.5651  a=0.75:0.5908  a=1.0:0.6002
+vocab 12,000 (rarest word appears  3x):  a=0.5:0.5849  a=0.75:0.6050  a=1.0:0.6119
+```
+
+It did not reverse. The explanation is wrong and I do not have a replacement,
+so the docstring in `weight.py` says the correction fails on this corpus and
+that why is unexplained. The rows are not comparable to each other — a
+different vocabulary means a different ruler — only within each row.
+
+Two parameters cannot be audited this way at all. Changing `vocab_size` or
+`min_count` changes which words exist, so the pairs and the truth table
+change with them and no fixed yardstick survives.
 
 ## What doesn't work
 
@@ -434,9 +493,10 @@ sens/evaluate.py    a benchmark generated from the vocabulary itself
 sens/experiments.py exponent sweep and dimension-matched sign ablation
 sens/heldout.py     does the compression generalise, or memorise
 sens/baseline.py    the uncompressed control, and McNemar's paired test
+sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              232 tests
+tests/              250 tests
 ```
 
 ```bash

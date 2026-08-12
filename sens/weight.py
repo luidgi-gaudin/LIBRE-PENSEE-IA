@@ -17,7 +17,7 @@ from .linalg import SparseMatrix
 
 def ppmi(
     counts: SparseMatrix,
-    alpha: float = 0.75,
+    alpha: float = 1.0,
     shift: float = 1.0,
 ) -> SparseMatrix:
     """Positive pointwise mutual information, with context smoothing.
@@ -34,8 +34,16 @@ def ppmi(
     normalising. This flattens the context distribution, which reduces the
     bonus that rare contexts get for being rare. Without it, the highest PMI
     scores in any corpus belong to typos and hapax legomena. 0.75 is the
-    value word2vec's negative sampler uses, arrived at empirically, and it
-    transfers here for the same reason it worked there.
+    value word2vec's negative sampler uses, arrived at empirically.
+
+    It does not transfer here. `sens audit` finds 1.0 — no smoothing at all —
+    beating 0.75 on held-out similarity and on analogy alike, so the default
+    is 1.0 and this parameter is off unless someone turns it on. The obvious
+    explanation, that the vocabulary cap has already removed the rare tail
+    the smoothing exists to tame, was tested by raising the cap to 12,000
+    words with a floor of three occurrences. The effect did not reverse. Why
+    the correction fails on this corpus is unexplained rather than explained,
+    which is the honest state of it.
 
     `shift` subtracts `log(shift)` from every score before clipping, which is
     the explicit form of skip-gram's negative sampling count. Raising it

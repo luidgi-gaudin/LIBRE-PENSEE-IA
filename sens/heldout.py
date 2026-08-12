@@ -38,6 +38,27 @@ from .text import Vocabulary, read_tokens
 from .weight import ppmi
 
 
+# The ruler, frozen.
+#
+# The ground truth is a PPMI table, so it has all the same parameters the
+# model has. Deriving it from the model's config seemed natural and was a
+# mistake: changing the `alpha` default moved every held-out number by 0.14
+# at once, because the space and the yardstick moved together. Nothing had
+# got worse; the measurement had simply been redefined underneath itself.
+#
+# So these values are pinned here and do not track `Config`. They are one
+# fixed operationalisation of "how similar are these two words in text the
+# model has not read". The absolute numbers depend on this choice; the
+# comparisons between builds, which is what the measurement is for, do not.
+RULER = {
+    "window": 4,
+    "harmonic": True,
+    "min_pair_weight": 1.0,
+    "alpha": 0.75,
+    "shift": 1.0,
+}
+
+
 def split_blocks(
     tokens: list[str], block: int = 4000
 ) -> tuple[list[str], list[str]]:
@@ -147,9 +168,16 @@ def prepare(
     pair_count: int = 4000,
     seed: int = 20260811,
     verbose: bool = False,
+    truth_config: Config | None = None,
 ) -> Prepared:
-    """Build a space on one half of the corpus and a truth table on the other."""
+    """Build a space on one half of the corpus and a truth table on the other.
+
+    `truth_config` overrides how the ground truth is computed. It defaults to
+    the frozen `RULER` above rather than to `config`, so that changing a
+    pipeline default cannot silently redefine the measurement.
+    """
     config = config or Config()
+    truth_config = truth_config or Config(**{**config.as_dict(), **RULER})
 
     tokens: list[str] = []
     for path in paths:
@@ -168,12 +196,12 @@ def prepare(
         cooccurrence(
             vocab.encode(test),
             size=len(vocab),
-            window=config.window,
-            harmonic=config.harmonic,
-            min_weight=config.min_pair_weight,
+            window=truth_config.window,
+            harmonic=truth_config.harmonic,
+            min_weight=truth_config.min_pair_weight,
         ),
-        alpha=config.alpha,
-        shift=config.shift,
+        alpha=truth_config.alpha,
+        shift=truth_config.shift,
     )
 
     # Pairs are drawn from the frequent end of the vocabulary. A rare word's
