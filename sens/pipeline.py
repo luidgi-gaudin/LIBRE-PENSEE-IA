@@ -18,7 +18,7 @@ from typing import Iterable
 from .counts import cooccurrence
 from .space import Space
 from .text import Vocabulary, read_tokens
-from .weight import ppmi
+from .weight import WEIGHTINGS, ppmi
 from .linalg import block_krylov_eigh, randomized_eigh
 
 
@@ -31,6 +31,7 @@ class Config:
     window: int = 4
     harmonic: bool = True
     min_pair_weight: float = 1.0
+    weighting: str = "ppmi"
     alpha: float = 1.0
     shift: float = 1.0
     dim: int = 64
@@ -114,10 +115,11 @@ def build(
     density = counts.nnz / max(1, len(vocab) ** 2)
     done(f"{counts.nnz:,} pairs, {density:.1%} dense")
 
-    done = stage("ppmi")
-    matrix = ppmi(counts, alpha=config.alpha, shift=config.shift)
+    done = stage(config.weighting)
+    weigh = WEIGHTINGS[config.weighting]
+    matrix = weigh(counts, alpha=config.alpha, shift=config.shift)
     kept = matrix.nnz / max(1, counts.nnz)
-    done(f"{matrix.nnz:,} positive, {kept:.1%} of pairs")
+    done(f"{matrix.nnz:,} kept, {kept:.1%} of pairs")
 
     done = stage("factorise")
     if config.factoriser == "krylov":

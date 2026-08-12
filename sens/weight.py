@@ -50,6 +50,22 @@ def ppmi(
     sparsifies the matrix by demanding stronger evidence. At 1.0 it does
     nothing, which is the default.
     """
+    return _pmi(counts, alpha=alpha, shift=shift, clip=True)
+
+
+def _pmi(
+    counts: SparseMatrix,
+    alpha: float,
+    shift: float,
+    clip: bool,
+) -> SparseMatrix:
+    """The shared body of `ppmi` and `pmi`.
+
+    One implementation with a flag, rather than two that can drift apart —
+    the whole point of comparing them is that they differ in exactly one
+    respect, and two copies of this arithmetic would eventually differ in
+    more.
+    """
     n = counts.n
     marginal = [sum(row.values()) for row in counts.rows]
     total = sum(marginal)
@@ -79,8 +95,57 @@ def ppmi(
             if c <= 0.0:
                 continue
             value = math.log(c) + base - col_offset[j]
-            if value > 0.0:
+            if value > 0.0 or not clip:
                 kept[j] = value
         out.append(kept)
 
     return SparseMatrix(out)
+
+
+def raw(counts: SparseMatrix, **_) -> SparseMatrix:
+    """No weighting at all: the co-occurrence table, untouched.
+
+    The control for the whole third stage. This README claims that turning
+    counts into surprise is the only step that makes a claim about language;
+    a claim like that is worth nothing until the version without it has been
+    asked the same questions.
+    """
+    return SparseMatrix([dict(row) for row in counts.rows])
+
+
+def log_counts(counts: SparseMatrix, **_) -> SparseMatrix:
+    """`log(1 + count)`, squashing the frequency range and nothing else.
+
+    Between `raw` and `ppmi` in ambition. It fixes the complaint that a
+    handful of enormous counts dominate every cosine, without ever comparing
+    a pair against what independence would predict. If most of PPMI's value
+    is really just compressing a Zipfian range, this recovers it; if the
+    value is in the comparison, this does not.
+    """
+    return SparseMatrix([
+        {j: math.log1p(v) for j, v in row.items() if v > 0.0}
+        for row in counts.rows
+    ])
+
+
+def pmi(
+    counts: SparseMatrix,
+    alpha: float = 1.0,
+    shift: float = 1.0,
+) -> SparseMatrix:
+    """Pointwise mutual information with the negatives kept.
+
+    Identical to `ppmi` except that scores below zero survive. The clipping
+    in `ppmi` is argued for in the README on the grounds that a negative
+    score is mostly noise at this corpus size — an argument that needs the
+    unclipped version to be measurable before it means anything.
+    """
+    return _pmi(counts, alpha=alpha, shift=shift, clip=False)
+
+
+WEIGHTINGS = {
+    "ppmi": ppmi,
+    "pmi": pmi,
+    "log": log_counts,
+    "raw": raw,
+}

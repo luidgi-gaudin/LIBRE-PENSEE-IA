@@ -10,14 +10,14 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 311 tests. 40 seconds end to end.
+and an audit of every default. 325 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
   read           1,771,272 tokens from 6 file(s)       1.7s
   vocabulary     4,000 types, 90.5% of tokens kept     0.4s
   co-occurrence  742,430 pairs, 4.6% dense             3.0s
-  ppmi           567,932 positive, 76.5% of pairs      0.2s
+  ppmi           567,932 kept, 76.5% of pairs          0.2s
   factorise      64 dims, eigenvalue spread   28.4x   35.3s
 
 $ python -m sens demo
@@ -101,6 +101,11 @@ Negatives are clipped to zero. That is not tidiness. A negative score asserts
 that two words *avoid* each other, and at this corpus size almost every such
 assertion is noise about a pair that simply never had the chance to meet.
 Clipping throws away a real signal to avoid a much larger imaginary one.
+
+Both of those claims — that the comparison against independence is what
+matters, and that clipping helps — are [measured
+below](#is-the-surprise-step-worth-anything). They are the two largest
+effects in the repository.
 
 **4. Factorisation.** The 4,000 × 4,000 matrix of surprise gets compressed to
 4,000 × 64 by truncated SVD — implemented here as a randomised range finder
@@ -593,6 +598,54 @@ barely moved across power-iteration counts while eigenvalue error moved by a
 factor of three. Accuracy in the spectrum and quality in the geometry are
 close to unrelated here.
 
+## Is the surprise step worth anything?
+
+Stage three has a large claim attached to it: that it is the only step making
+a claim about language, the point where the table stops being a census. Every
+measurement so far has tuned its parameters. None had asked whether the step
+belongs there at all.
+
+`weighting` is now a pipeline setting with three alternatives — the raw
+counts, `log(1 + count)`, and PMI with the negatives kept — so the whole
+stage can be ablated instead of only adjusted.
+
+```
+weighting  held-out    top1    top5    form
+raw          0.2243    2.7%    6.5%   13.2%
+log          0.3359    3.1%    7.6%   20.0%
+pmi          0.5234    4.2%   11.8%   21.3%
+ppmi         0.6002    4.2%   13.1%   22.6%
+```
+
+**This is the largest effect in the repository by a wide margin.** Against
+raw counts, PPMI is worth 0.376 of held-out correlation — 98 sd — and 9.4
+points of form rate. For comparison, the eigenvalue exponent that took three
+cycles to get right is worth 24 sd, and the entire choice of factorisation
+algorithm is worth 6.
+
+The `log` row is the one that makes it interesting, because it separates two
+explanations that the raw comparison cannot. If PPMI's value were mostly
+that it stops a handful of enormous counts dominating every cosine, then
+squashing the range logarithmically would recover most of it. It recovers
+about a third: 0.336 against raw's 0.224 and PPMI's 0.600. So the value is
+not in compressing the range. It is in the comparison against what
+independence would predict, which is the thing the README said it was.
+
+Clipping earns its place too, at 20 sd on held-out — though only there. On
+the analogy benchmark `pmi` and `ppmi` tie on top-1 and their form rates
+differ by 1.3 points, which is
+[inside the noise](#first-how-big-is-a-real-difference). Keeping the negative
+scores costs you the ability to predict unseen similarity and costs you
+nothing in category structure.
+
+One caveat, stated because it applies here more than anywhere else: the
+held-out ruler computes its ground truth with PPMI, so the held-out column
+is biased in PPMI's favour by construction. The analogy columns are not —
+they are generated from the vocabulary and know nothing about any weighting
+— and they order the four the same way, with raw a long way last. The
+conclusion survives on the unbiased metric; only the size of the held-out
+gap should be read with suspicion.
+
 ## Auditing the rest of the defaults
 
 Finding one wrong default raised the obvious question about the ones nobody
@@ -603,6 +656,7 @@ so it takes several minutes.
 ```
 window            2=0.5830  4=0.5908  6=0.5895  10=0.5834
 harmonic          False=0.4990  True=0.6002
+weighting         raw=0.2243  log=0.3359  pmi=0.5234  ppmi=0.6002
 alpha             0.5=0.5651  0.75=0.5908  1.0=0.6002   <-- 1.0 beats 0.75
 shift             1.0=0.5908  2.0=0.5276  5.0=0.3409
 min_pair_weight   0.0=0.5171  1.0=0.5908  2.0=0.4950
@@ -617,7 +671,7 @@ the far edge shout as loudly as the word next door. That argument turns out
 to be worth more than the entire factorisation-tuning effort several sections
 above.
 
-Four of five confirmed — though only two of them by a margin the
+Five of six confirmed — though only two of them by a margin the
 [noise floor](#first-how-big-is-a-real-difference) can see. Window 4 beats
 window 6 by 0.3 sd, which is to say not at all; what the row actually shows
 is that anything between 4 and 6 is fine and the extremes are slightly worse.
@@ -797,7 +851,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              311 tests
+tests/              325 tests
 ```
 
 ```bash

@@ -39,6 +39,7 @@ from .weight import ppmi
 DEFAULT_GRID: tuple[tuple[str, tuple], ...] = (
     ("window", (2, 4, 6, 10)),
     ("harmonic", (False, True)),
+    ("weighting", ("raw", "log", "pmi", "ppmi")),
     ("alpha", (0.5, 0.75, 1.0)),
     ("shift", (1.0, 2.0, 5.0)),
     ("min_pair_weight", (0.0, 1.0, 2.0)),

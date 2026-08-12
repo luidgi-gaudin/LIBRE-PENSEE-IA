@@ -4,7 +4,7 @@ import math
 import unittest
 
 from sens.linalg import SparseMatrix
-from sens.weight import ppmi
+from sens.weight import WEIGHTINGS, log_counts, pmi, ppmi, raw
 
 
 def sparse(rows) -> SparseMatrix:
@@ -98,6 +98,95 @@ class TestPPMI(unittest.TestCase):
         table = [[7.0, 2.0, 1.0], [2.0, 6.0, 3.0], [1.0, 3.0, 9.0]]
         m = ppmi(sparse(table))
         self.assertTrue(all(v > 0.0 for row in m.rows for v in row.values()))
+
+
+class TestRaw(unittest.TestCase):
+    def test_it_returns_the_counts_unchanged(self):
+        table = [[3.0, 1.0], [1.0, 4.0]]
+        self.assertEqual(raw(sparse(table)).rows[0], {0: 3.0, 1: 1.0})
+
+    def test_it_copies_rather_than_aliasing(self):
+        counts = sparse([[1.0, 2.0], [2.0, 1.0]])
+        result = raw(counts)
+        result.rows[0][0] = 99.0
+        self.assertEqual(counts.rows[0][0], 1.0)
+
+    def test_shape_is_preserved(self):
+        self.assertEqual(raw(SparseMatrix([{}, {}, {}])).n, 3)
+
+
+class TestLogCounts(unittest.TestCase):
+    def test_it_is_log_one_plus_count(self):
+        result = log_counts(sparse([[3.0, 0.0], [0.0, 1.0]]))
+        self.assertAlmostEqual(result.rows[0][0], math.log(4.0), places=12)
+        self.assertAlmostEqual(result.rows[1][1], math.log(2.0), places=12)
+
+    def test_it_is_monotone_in_the_count(self):
+        result = log_counts(sparse([[1.0, 5.0, 50.0]]))
+        row = result.rows[0]
+        self.assertLess(row[0], row[1])
+        self.assertLess(row[1], row[2])
+
+    def test_it_compresses_the_range(self):
+        # The whole point: a hundredfold difference in counts becomes a
+        # fivefold difference in weight.
+        result = log_counts(sparse([[1.0, 100.0]])).rows[0]
+        self.assertLess(result[1] / result[0], 10.0)
+
+    def test_zero_counts_are_dropped(self):
+        self.assertNotIn(1, log_counts(SparseMatrix([{0: 2.0, 1: 0.0}])).rows[0])
+
+
+class TestUnclippedPMI(unittest.TestCase):
+    def test_it_keeps_negative_scores(self):
+        # pmi(0,1) for this table is log(0.4), which ppmi discards.
+        table = [[4.0, 1.0], [1.0, 4.0]]
+        self.assertAlmostEqual(
+            pmi(sparse(table), alpha=1.0).rows[0][1], math.log(0.4), places=12
+        )
+
+    def test_ppmi_is_this_with_the_negatives_removed(self):
+        table = [[7.0, 2.0, 1.0], [2.0, 6.0, 3.0], [1.0, 3.0, 9.0]]
+        signed = pmi(sparse(table))
+        clipped = ppmi(sparse(table))
+        expected = {
+            i: {j: v for j, v in row.items() if v > 0.0}
+            for i, row in enumerate(signed.rows)
+        }
+        for i, row in enumerate(clipped.rows):
+            self.assertEqual(row, expected[i])
+
+    def test_it_keeps_more_entries_than_ppmi(self):
+        table = [[4.0, 1.0], [1.0, 4.0]]
+        self.assertGreater(pmi(sparse(table)).nnz, ppmi(sparse(table)).nnz)
+
+    def test_it_is_symmetric_for_a_symmetric_input(self):
+        table = [[3.0, 1.0, 0.0], [1.0, 4.0, 2.0], [0.0, 2.0, 5.0]]
+        result = pmi(sparse(table))
+        for i, row in enumerate(result.rows):
+            for j, v in row.items():
+                self.assertAlmostEqual(v, result.rows[j][i], places=12)
+
+
+class TestRegistry(unittest.TestCase):
+    def test_every_name_maps_to_its_function(self):
+        self.assertIs(WEIGHTINGS["ppmi"], ppmi)
+        self.assertIs(WEIGHTINGS["pmi"], pmi)
+        self.assertIs(WEIGHTINGS["log"], log_counts)
+        self.assertIs(WEIGHTINGS["raw"], raw)
+
+    def test_every_weighting_accepts_the_same_call(self):
+        # The pipeline passes alpha and shift to all of them, so the two
+        # that ignore those still have to tolerate being handed them.
+        table = sparse([[4.0, 1.0], [1.0, 4.0]])
+        for name, weigh in WEIGHTINGS.items():
+            result = weigh(table, alpha=1.0, shift=1.0)
+            self.assertEqual(result.n, 2, name)
+
+    def test_the_pipeline_default_is_in_the_registry(self):
+        from sens.pipeline import Config
+
+        self.assertIn(Config().weighting, WEIGHTINGS)
 
 
 if __name__ == "__main__":
