@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 325 tests. 40 seconds end to end.
+and an audit of every default. 333 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -646,6 +646,55 @@ they are generated from the vocabulary and know nothing about any weighting
 conclusion survives on the unbiased metric; only the size of the held-out
 gap should be read with suspicion.
 
+## Is cosine the right question to ask?
+
+Stage five was the last one never ablated. Every query in this repository
+compares directions and throws lengths away, which is conventional and was
+therefore never checked. `metric` is now an argument to `similarity`,
+`neighbors` and `analogy`, so the alternatives can be measured.
+
+```
+metric       held-out    top1    top5    form
+cosine         0.6002    4.2%   13.1%   22.6%
+euclidean      0.2425    2.7%    9.5%   16.9%
+dot            0.3457    0.2%    0.8%    2.4%
+```
+
+Normalising is worth 26 sd of form rate over the plain dot product and 7.5 sd
+over Euclidean distance — the second-largest effect here, behind only the
+choice of weighting.
+
+The reason is visible in one query:
+
+```
+cosine     whale -> sperm, ship, greenland, fish, bone, sea
+dot        whale -> chapter, its, the, upon, ahab, ye
+euclidean  whale -> ship, sperm, sea, fish, whales, boat
+```
+
+Vector length carries word frequency — the rank correlation between a
+vector's norm and its position in the frequency-ordered vocabulary is
+**−0.77**. So the dot product mostly reports which words are common, and
+`whale` comes back with `the`, `its` and `upon`. Cosine discards exactly the
+quantity that is contaminating the answer.
+
+Euclidean is the interesting one: its neighbour list is *good*, nearly as
+good as cosine's, and yet it scores far worse on both benchmarks. Nearest
+neighbours around a fixed query survive the length contamination; rank
+correlation across four thousand arbitrary pairs does not, because the
+distance between two vectors is dominated by how frequent each word is
+rather than by how alike they are.
+
+**A note on how this measurement was nearly wrong.** The first run had
+Euclidean at exactly 0.0% on all three analogy columns, which looked like a
+clean result and was an artefact. `analogy` built its target from *unit*
+vectors regardless of metric, so a length-sensitive metric was comparing a
+target of magnitude ~1 against candidates of magnitude ~100; every candidate
+was about equally far away and the shortest vector in the vocabulary won
+every time. The target is now built in whatever space the comparison happens
+in, Euclidean scores 16.9% instead of 0%, and the conclusion is smaller and
+correct. There is a regression test.
+
 ## Auditing the rest of the defaults
 
 Finding one wrong default raised the obvious question about the ones nobody
@@ -851,7 +900,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              325 tests
+tests/              333 tests
 ```
 
 ```bash

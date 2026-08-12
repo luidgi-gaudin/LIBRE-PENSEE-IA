@@ -5,7 +5,7 @@ import os
 import tempfile
 import unittest
 
-from sens.space import Space
+from sens.space import METRICS, Space
 
 
 def square() -> Space:
@@ -224,3 +224,100 @@ class TestPersistence(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMetrics(unittest.TestCase):
+    """Cosine is a choice, so it has to be possible to choose otherwise."""
+
+    def graded(self) -> Space:
+        """Same directions, very different lengths.
+
+        `long` points the same way as `query` but is ten times its length;
+        `short` points the same way but is a tenth. Cosine cannot tell the
+        three apart, and the other two metrics care about nothing else.
+        """
+        return Space(
+            words=["query", "long", "short", "sideways"],
+            vectors=[[1.0, 0.0], [10.0, 0.0], [0.1, 0.0], [0.0, 1.0]],
+        )
+
+    def test_cosine_ignores_length(self):
+        space = self.graded()
+        self.assertAlmostEqual(
+            space.similarity("query", "long", metric="cosine"), 1.0
+        )
+        self.assertAlmostEqual(
+            space.similarity("query", "short", metric="cosine"), 1.0
+        )
+
+    def test_dot_is_dominated_by_length(self):
+        space = self.graded()
+        self.assertEqual(space.neighbors("query", n=1, metric="dot")[0][0],
+                         "long")
+
+    def test_euclidean_prefers_the_nearest_point(self):
+        space = self.graded()
+        self.assertEqual(
+            space.neighbors("query", n=1, metric="euclidean")[0][0], "short"
+        )
+
+    def test_all_three_agree_on_a_unit_length_space(self):
+        # With every vector already normalised there is nothing for the
+        # metrics to disagree about, which is a useful sanity anchor.
+        h = math.sqrt(3) / 2
+        space = Space(
+            words=["a", "b", "c"],
+            vectors=[[1.0, 0.0], [h, 0.5], [0.0, 1.0]],
+        )
+        picks = {
+            m: space.neighbors("a", n=1, metric=m)[0][0]
+            for m in METRICS
+        }
+        self.assertEqual(set(picks.values()), {"b"})
+
+    def test_an_unknown_metric_is_rejected(self):
+        for call in (
+            lambda: self.graded().similarity("query", "long", metric="taxicab"),
+            lambda: self.graded().neighbors("query", metric="taxicab"),
+        ):
+            with self.assertRaises(ValueError) as caught:
+                call()
+            self.assertIn("taxicab", str(caught.exception))
+
+    def test_analogy_builds_its_target_in_the_metric_own_space(self):
+        # Regression test. The target used to be assembled from unit vectors
+        # whatever the metric was, so a length-sensitive metric compared a
+        # target of magnitude ~1 against candidates of magnitude ~100; every
+        # candidate was about equally far away and the shortest vector always
+        # won. Euclidean analogy scored a clean 0% until this was fixed.
+        #
+        # Here the parallelogram is exact but the vectors are long, so a
+        # target built in unit space would miss `woman` entirely.
+        space = Space(
+            words=["king", "queen", "man", "woman", "tiny"],
+            vectors=[
+                [100.0, 100.0], [100.0, 200.0],
+                [300.0, 100.0], [300.0, 200.0],
+                [0.01, 0.01],
+            ],
+        )
+        for metric in ("dot", "euclidean"):
+            self.assertEqual(
+                space.analogy("king", "queen", "man", n=1, metric=metric)[0][0],
+                "woman",
+                metric,
+            )
+
+    def test_analogy_still_excludes_its_inputs_under_every_metric(self):
+        space = self.graded()
+        for metric in METRICS:
+            returned = {
+                w for w, _ in
+                space.analogy("query", "long", "short", metric=metric)
+            }
+            self.assertFalse(returned & {"query", "long", "short"}, metric)
+
+    def test_metrics_tuple_lists_what_is_accepted(self):
+        space = self.graded()
+        for metric in METRICS:
+            space.neighbors("query", n=1, metric=metric)
