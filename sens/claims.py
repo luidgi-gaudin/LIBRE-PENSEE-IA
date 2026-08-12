@@ -99,15 +99,27 @@ REQUIRED: dict[str, frozenset[str]] = {
 
 STATUSES = tuple(REQUIRED)
 
-# The spread a held-out effect shows when nothing about the method changes —
-# only the factorisation seed, the pair sample and the block size, all of
-# which are choices nobody made deliberately. `sens robustness` measures it.
+# The spread a held-out *effect* shows when nothing about the method changes.
+# Four axes, all of them choices nobody made deliberately, combined in
+# quadrature and each measured on a difference rather than an absolute
+# because differences turned out not to cancel:
 #
-# Every sigma below is the effect divided by this. It used to be divided by
-# the factorisation seed alone, at 0.0047, which overstated every claim in
-# the repository by a factor of 2.4. The pair sample turned out to be the
-# largest source and had never been looked at.
-EFFECT_SD = 0.0111
+#   factorisation seed  0.0040     pair sample   0.0109
+#   block size          0.0036     block phase   0.0091
+#
+# This has been wrong twice, in the same direction. It was 0.0047 — the
+# factorisation seed alone — which overstated every claim by 2.4x. Then it
+# was 0.0111, still missing the block phase, which overstated them by a
+# further 1.4x. Each correction was found by probing an axis nobody had
+# thought to vary, and each time the newly measured axis was larger than the
+# one already being counted.
+#
+# `pair ceiling` is deliberately excluded, at sd 0.0810 the largest spread of
+# all. Changing how far down the frequency list pairs are drawn from changes
+# *which words are being asked about*, so it is a different question rather
+# than a noisier answer to the same one. It is a sensitivity worth reporting
+# and folding it in here would conflate two things.
+EFFECT_SD = 0.0152
 
 # The same quantity for the analogy benchmark's form rate, whose questions
 # are drawn with a fixed seed exactly as the held-out pairs are. Question
@@ -218,7 +230,7 @@ REGISTER: tuple[Claim, ...] = (
         status="holds",
         novels="+0.3531 spearman",
         expository="+0.4787 spearman",
-        sigma=31.8,
+        sigma=23.2,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         note="largest effect measured here; the step the README always "
              "claimed was the important one, finally with a control",
@@ -235,7 +247,7 @@ REGISTER: tuple[Claim, ...] = (
         status="holds",
         novels="+0.2669 spearman",
         expository="+0.2802 spearman",
-        sigma=24.0,
+        sigma=17.6,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         effect=0.2669,
         effect_expository=0.2802,
@@ -262,7 +274,7 @@ REGISTER: tuple[Claim, ...] = (
         status="holds",
         novels="+0.0858 spearman",
         expository="+0.1179 spearman",
-        sigma=7.7,
+        sigma=5.6,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         note="the parameter that had nothing behind it but a sentence of "
              "prose turned out to be among the largest effects",
@@ -278,7 +290,7 @@ REGISTER: tuple[Claim, ...] = (
         status="holds",
         novels="+0.1083 spearman",
         expository="+0.1283 spearman",
-        sigma=9.8,
+        sigma=7.1,
         controls=_c("noise-floor", "second-corpus", "held-out",
                     "unbiased-metric"),
         note="both curves turn over at an interior optimum, which is what "
@@ -295,7 +307,7 @@ REGISTER: tuple[Claim, ...] = (
         status="holds",
         novels="+0.0822 spearman",
         expository="+0.0837 spearman",
-        sigma=7.4,
+        sigma=5.4,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         note="on held-out only; on analogy the two are indistinguishable",
         effect=0.0822,
@@ -310,7 +322,7 @@ REGISTER: tuple[Claim, ...] = (
         status="holds",
         novels="+0.0533 spearman",
         expository="+0.0832 spearman",
-        sigma=4.8,
+        sigma=3.5,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         effect=0.0533,
         effect_expository=0.0832,
@@ -321,10 +333,10 @@ REGISTER: tuple[Claim, ...] = (
         id="no-shift",
         what="not shifting PMI beats shifting it",
         section="auditing-the-rest-of-the-defaults",
-        status="holds",
+        status="marginal",
         novels="+0.0426 spearman",
         expository="+0.0408 spearman",
-        sigma=3.8,
+        sigma=2.8,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         effect=0.0426,
         effect_expository=0.0408,
@@ -382,7 +394,7 @@ REGISTER: tuple[Claim, ...] = (
         status="no-effect",
         novels="+0.0042 spearman",
         expository="same direction",
-        sigma=0.4,
+        sigma=0.3,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         note="the default moved to 1.0 on a 2.4 sd result. Re-derived "
              "after the document-split fix it is 0.9 sd — within noise. The "
@@ -406,13 +418,14 @@ REGISTER: tuple[Claim, ...] = (
         id="window-size",
         what="a window of 4 beats a window of 2",
         section="auditing-the-rest-of-the-defaults",
-        status="marginal",
+        status="no-effect",
         novels="+0.0219 spearman",
-        sigma=2.0,
+        sigma=1.4,
         controls=_c("noise-floor", "held-out"),
-        note="recorded at 2.0 sd, then 4.0, then 4.6, now 2.0 again — "
-             "twice moved by a stale baseline, then halved when the noise "
-             "floor stopped counting only the factorisation seed",
+        note="recorded at 2.0 sd, then 4.0, then 4.6, then 2.0, now 1.4. "
+             "Moved twice by a stale baseline and twice more by a noise "
+             "floor that kept turning out to be missing an axis. Nothing "
+             "about the measurement changed; only what it was compared to",
         effect=0.0219,
         unit="spearman",
         check=ConfigDelta("window", 2),
@@ -425,7 +438,7 @@ REGISTER: tuple[Claim, ...] = (
         section="auditing-the-rest-of-the-defaults",
         status="no-effect",
         novels="-0.0039 spearman",
-        sigma=0.4,
+        sigma=0.3,
         controls=_c("noise-floor", "held-out"),
         note="anything between 4 and 6 is the same, and which of them is "
              "nominally ahead flips with the baseline — it flipped when the "

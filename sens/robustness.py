@@ -68,6 +68,8 @@ def probe(
     seeds: tuple[int, ...] = (20260811, 7, 42),
     blocks: tuple[int, ...] = (2000, 4000, 8000),
     pair_seeds: tuple[int, ...] = (20260811, 7, 42, 1234, 99999, 31415),
+    offsets: tuple[int, ...] = (0, 1000, 2000, 3000),
+    ceilings: tuple[int, ...] = (600, 1200, 2400),
     progress=None,
 ) -> list[Axis]:
     """Vary each incidental choice in turn and score the default build.
@@ -113,6 +115,24 @@ def probe(
         size.settings.append(str(block))
         size.scores.append(sized.score(base))
     axes.append(size)
+
+    phase = Axis("block phase", "where the first block boundary falls")
+    for offset in offsets:
+        if progress:
+            progress("block phase", offset)
+        shifted = build_ruler(paths, offset=offset)
+        phase.settings.append(str(offset))
+        phase.scores.append(shifted.score(base))
+    axes.append(phase)
+
+    ceiling = Axis("pair ceiling", "how far down the frequency list pairs come from")
+    for top in ceilings:
+        if progress:
+            progress("pair ceiling", top)
+        limited = build_ruler(paths, pair_vocab=top)
+        ceiling.settings.append(str(top))
+        ceiling.scores.append(limited.score(base))
+    axes.append(ceiling)
 
     return axes
 

@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 396 tests. 40 seconds end to end.
+and an audit of every default. 408 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -129,21 +129,21 @@ that produced it.
 
 | what was tested | novels | expository | verdict |
 | --- | --- | --- | --- |
-| [PPMI vs raw counts](#is-the-surprise-step-worth-anything) | +0.353 · 32 sd | +0.479 · 43 sd | holds |
-| [PPMI vs log counts](#is-the-surprise-step-worth-anything) | +0.267 · 24 sd | +0.280 · 25 sd | holds |
-| [clipping: PPMI vs PMI](#is-the-surprise-step-worth-anything) | +0.082 · 7.4 sd | +0.084 · 7.5 sd | holds |
+| [PPMI vs raw counts](#is-the-surprise-step-worth-anything) | +0.353 · 23 sd | +0.479 · 31 sd | holds |
+| [PPMI vs log counts](#is-the-surprise-step-worth-anything) | +0.267 · 18 sd | +0.280 · 18 sd | holds |
+| [clipping: PPMI vs PMI](#is-the-surprise-step-worth-anything) | +0.082 · 5.4 sd | +0.084 · 5.5 sd | holds |
 | [cosine vs dot product](#is-cosine-the-right-question-to-ask) | +20.2 pts · 12 sd | dot collapses | holds |
 | [cosine vs Euclidean](#is-cosine-the-right-question-to-ask) | +5.7 pts · 3.4 sd | +4.0 pts · p 0.006 | holds |
-| [1/distance vs flat window](#auditing-the-rest-of-the-defaults) | +0.086 · 7.7 sd | +0.118 · 11 sd | holds |
-| [exponent 1.0 vs 0.5](#being-wrong-about-a-default) | +0.108 · 9.8 sd | +0.128 · 12 sd | holds |
-| [pruning: min weight 1 vs 0](#auditing-the-rest-of-the-defaults) | +0.053 · 4.8 sd | +0.083 · 7.5 sd | holds |
-| [shift 1 vs 2](#auditing-the-rest-of-the-defaults) | +0.043 · 3.8 sd | +0.041 · 3.7 sd | holds |
+| [1/distance vs flat window](#auditing-the-rest-of-the-defaults) | +0.086 · 5.6 sd | +0.118 · 7.8 sd | holds |
+| [exponent 1.0 vs 0.5](#being-wrong-about-a-default) | +0.108 · 7.1 sd | +0.128 · 8.4 sd | holds |
+| [pruning: min weight 1 vs 0](#auditing-the-rest-of-the-defaults) | +0.053 · 3.5 sd | +0.083 · 5.5 sd | holds |
+| [shift 1 vs 2](#auditing-the-rest-of-the-defaults) | +0.043 · 2.8 sd | +0.041 · 2.7 sd | marginal |
 | [lowercasing vs keeping case](#tokenisation-the-last-stage-and-two-defaults-that-lose) | +0.013 · 3.4 sd, and 15% more vocabulary | +0.014 · 5.3 sd | holds |
 | [magnitude vs sign ranking](#ranking-by-magnitude-earns-its-place-the-negatives-do-not) | +2.4 pts top-1; 0 of 12 random draws matched | 16.9% vs 13.5% random | holds |
-| [smoothing: alpha 1.0 vs 0.75](#auditing-the-rest-of-the-defaults) | +0.004 · 0.4 sd | — | **no effect** |
+| [smoothing: alpha 1.0 vs 0.75](#auditing-the-rest-of-the-defaults) | +0.004 · 0.3 sd | — | **no effect** |
 | [vocabulary 8000 vs 4000](#the-two-that-needed-a-different-ruler) | +0.008 · 2.1 sd | not run | marginal |
-| [window 4 vs 2](#auditing-the-rest-of-the-defaults) | +0.022 · 2.0 sd | not run | marginal |
-| [window 4 vs 6](#auditing-the-rest-of-the-defaults) | −0.004 · 0.4 sd | not run | **no effect** |
+| [window 4 vs 2](#auditing-the-rest-of-the-defaults) | +0.022 · 1.4 sd | not run | **no effect** |
+| [window 4 vs 6](#auditing-the-rest-of-the-defaults) | −0.004 · 0.3 sd | not run | **no effect** |
 | [min\_count 5 vs 20](#the-two-that-needed-a-different-ruler) | 0.002 · 0.5 sd | not run | **no effect** |
 | [3CosMul vs 3CosAdd](#morphological-analogy) | −0.001 · 0.4 sd | not run | **no effect** |
 | [accurate factorisation (Krylov)](#a-better-factorisation-that-made-a-worse-model) | −4.9 pts · 2.9 sd, 39% faster | +0.4 pts · p 0.87 | **refuted** |
@@ -151,7 +151,7 @@ that produced it.
 | [64 dims beat 160 on category](#how-many-dimensions-and-the-trade-seen-directly) | p 0.034 | p 0.91 | **refuted** |
 
 Nine of the eleven large effects replicate on a corpus with nothing in
-common but the language. Four parameters everyone tunes turn out to do
+common but the language. Five parameters everyone tunes turn out to do
 nothing measurable — including the context smoothing whose default this
 repository once changed. Three rows did not survive replication, including
 the two it once led with.
@@ -334,8 +334,24 @@ axis                   sd    spread   settings
 factorisation      0.0040    0.0080   three seeds
 pair sample        0.0097    0.0275   six samples
 block size         0.0036    0.0068   2000, 4000, 8000
+block phase        0.0199    0.0479   0, 1000, 2000, 3000
+pair ceiling       0.0810    0.1620   600, 1200, 2400
+```
 
-total 0.0111 against a seed-only floor of 0.0047
+Two of those need separating. **Block phase** — where the first split
+boundary happens to fall — is a different partition of the same question,
+and belongs in the floor. **Pair ceiling** — how far down the frequency list
+the sampled pairs come from — changes *which words are being asked about*,
+which is a different question rather than a noisier answer to the same one.
+It is the largest spread in the table and is deliberately excluded; folding
+it in would conflate two things.
+
+The floor for an *effect*, measured on differences rather than absolutes
+because differences turn out not to cancel, is then
+
+```
+factorisation 0.0040   pair sample 0.0109
+block size    0.0036   block phase 0.0091      combined 0.0152
 ```
 
 **The largest source of uncertainty in this repository is which word pairs
@@ -368,12 +384,18 @@ each claim and a test asserting the refutations all have it — because if it
 were only a paragraph, the next correction would sweep them away with
 everything else.
 
-So the honest floor for an effect is **0.0111 held-out and 0.0170 in form
-points, and every unpaired sigma in this README was overstated by 2 to
-2.4×**. All of them are now divided by the right number. The consequences are real but not fatal:
+**This floor has now been wrong twice, in the same direction.** It was
+0.0047, the factorisation seed alone, which overstated every claim by 2.4×.
+Then 0.0111, still missing the block phase, overstating by a further 1.4×.
+Each correction came from probing an axis nobody had thought to vary, and
+each time the newly measured axis was *larger* than the ones already counted.
+The current figure is 0.0152 held-out and 0.0170 in form points, and the only
+honest thing to say about it is that the previous two also looked complete. The consequences are real but not fatal:
 
-- `window 4 vs 2` drops from 4.6 sd to 2.0, from solid to marginal.
-- `shift` drops from 9.1 sd to 3.8, `pruning` from 11 to 4.8.
+- `shift` falls from 9.1 sd to 2.8 and from solid to **marginal** — it was
+  one of the audit's confident rows.
+- `window 4 vs 2` falls from 4.6 sd to 1.4 and from solid to **no effect**.
+- `pruning` from 11 sd to 3.5, which is now barely above the line.
 - `cosine vs Euclidean` drops from 7.5 sd to 3.4, and survives only because
   its replication was a paired test.
 - The large effects stay large: PPMI over raw counts is 32 sd rather than 75,
@@ -1377,7 +1399,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              396 tests
+tests/              408 tests
 ```
 
 ```bash

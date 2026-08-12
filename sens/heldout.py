@@ -60,7 +60,7 @@ RULER = {
 
 
 def split_documents(
-    documents: list[list[str]], block: int = 4000
+    documents: list[list[str]], block: int = 4000, offset: int = 0
 ) -> tuple[list[str], list[str]]:
     """Split each document independently, then concatenate.
 
@@ -80,14 +80,14 @@ def split_documents(
     train: list[str] = []
     test: list[str] = []
     for document in documents:
-        left, right = split_blocks(document, block=block)
+        left, right = split_blocks(document, block=block, offset=offset)
         train.extend(left)
         test.extend(right)
     return train, test
 
 
 def split_blocks(
-    tokens: list[str], block: int = 4000
+    tokens: list[str], block: int = 4000, offset: int = 0
 ) -> tuple[list[str], list[str]]:
     """Deal the corpus into two halves, alternating in blocks.
 
@@ -104,6 +104,12 @@ def split_blocks(
     """
     train: list[str] = []
     test: list[str] = []
+    # `offset` slides the first boundary. Where it falls is as arbitrary as
+    # the block size, and an arbitrary choice nobody measured is what the
+    # file-ordering bug turned out to be.
+    if offset:
+        head, tokens = tokens[:offset], tokens[offset:]
+        train.extend(head)
     for start in range(0, len(tokens), block):
         chunk = tokens[start : start + block]
         if (start // block) % 2 == 0:

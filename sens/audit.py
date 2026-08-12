@@ -83,12 +83,13 @@ def build_ruler(
     pair_vocab: int = 1200,
     pair_count: int = 4000,
     seed: int = 20260811,
+    offset: int = 0,
 ) -> Ruler:
     base = base or Config()
     ruler = Config(**{**base.as_dict(), **RULER})
 
     documents = [read_tokens(path) for path in paths]
-    train, test = split_documents(documents, block=block)
+    train, test = split_documents(documents, block=block, offset=offset)
 
     vocab = Vocabulary.from_tokens(
         train, max_size=base.vocab_size, min_count=base.min_count
