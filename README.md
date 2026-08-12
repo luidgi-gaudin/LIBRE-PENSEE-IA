@@ -111,20 +111,21 @@ effects in the repository.
 4,000 × 64 by truncated SVD — implemented here as a randomised range finder
 plus Jacobi rotations, both by hand, in `linalg.py`.
 
-**This is the step that trades identity for category.** Before it, every word
-is a 4,000-long list of the specific words it happened to appear near — a
-record, precise and expensive. Force all 4,000 words to share 64 axes and
-precision becomes unaffordable. The only way to fit is to spend dimensions on
-regularities that pay off across many words at once, and *being the sort of
-thing sailors are near* is such a regularity while *appearing in line 41,822*
-is not.
+**This is the step that makes the vectors short.** Before it, every word is a
+4,000-long list of the specific words it happened to appear near — a record,
+precise and expensive. Force all 4,000 words to share 64 axes and precision
+becomes unaffordable; what a dimension can afford to encode is a regularity
+that pays off across many words at once.
 
-This paragraph used to make a stronger claim: that the factorisation is what
-*creates* meaning, and that generalisation is simply what a lossy encoder
-does when it runs out of room. That was rhetoric, and [measuring it against
-the uncompressed matrix](#does-compression-add-anything) showed it was too
-strong in one direction and too weak in another. The corrected version is
-above, and the measurement is below.
+This paragraph has now been wrong twice, in opposite directions, and the
+history is worth more than the current wording. It first claimed the
+factorisation is what *creates* meaning. [Measuring it against the
+uncompressed matrix](#does-compression-add-anything) killed that. It then
+claimed the factorisation *trades identity for category* — buying you what
+kind of word this is at the cost of which word it was. That was measured
+three separate ways and held up on this corpus, and then [failed to replicate
+on a second one](#does-any-of-it-generalise), where compression buys nothing
+at all and simply loses. What the step does turns out to depend on the text.
 
 **5. Geometry.** Scale each axis by `|eigenvalue|`, normalise, and ask
 questions with dot products.
@@ -890,23 +891,38 @@ The metric result replicates too, on a paired test over 720 questions:
 cosine beats Euclidean on form 17.1% to 13.1% (p = 0.0063) and the plain dot
 product collapses to 3.6%. Normalising is not a fact about novels either.
 
-One thing does **not** resolve. On the novels, the form rate peaks near 48
-dimensions and falls away — the identity-for-category trade seen as a curve.
-On the expository corpus the same curve is flat inside its noise:
+**One thing does not replicate, and it is the one this repository cared most
+about.** The identity-for-category trade — compression buying you what kind
+of word this is at the cost of which word it was — is absent on expository
+prose. The same paired comparison, same 720 questions:
 
 ```
-dims    held-out    form
-  16      0.5961   15.8%
-  32      0.6175   15.8%
-  64      0.6370   15.3%
- 128      0.6450   17.8%
+                              top1    top5    form
+raw PPMI rows (4000 dims)     9.7%   19.2%   22.4%
+compressed space (64 dims)    4.0%   11.0%   17.1%
+
+  top1  p < 0.0001   raw wins
+  top5  p < 0.0001   raw wins
+  form  p = 0.0079   raw wins
 ```
 
-Held-out correlation rises monotonically, as before. The form column moves by
-about two points across the whole range, which at this sample size is roughly
-one standard deviation. So this is *unresolved*, not refuted — the shape that
-was clear on one corpus is invisible on the other, and settling it would need
-more questions than I ran.
+On the novels, `form` was the column compression *won*, at p = 0.0037. Here
+it loses it. Compression buys nothing on this corpus; it is lossy in every
+direction at once.
+
+The dimension curve says the same thing. On the novels, 64 dimensions beat
+160 on form (p = 0.034), which is the trade drawn as a dose-response curve.
+Here, with 720 paired questions, 64 against 160 gives p = 0.91 on form —
+not a hint of an effect — while 160 wins outright on top-5 at p = 0.018.
+More dimensions are simply better here.
+
+So the claim was over-generalised from a single corpus. Three independent
+routes agreed with each other — the possessive misses, the uncompressed
+control, the dimension curve — and agreeing with each other is not the same
+as being true of anything but Melville and company. Why narrative fiction
+should have a compression sweet spot that argumentative prose lacks, I do not
+know, and after three tidy explanations died this session I am not going to
+offer a fourth.
 
 I nearly reported two reversals here and both were noise. At `limit=60`,
 Euclidean appeared to beat cosine and the form curve appeared to rise; a
@@ -1052,15 +1068,26 @@ The held-out number is the closest thing to a direct test of that bet, and it
 is why I built it: 0.59 rank correlation with similarity measured on text the
 space never read. The compression is not storing the corpus.
 
-But it is not free, either, and I only found that out by building the control
-that could embarrass me. The raw uncompressed counts predict that same
-held-out similarity *better*, 0.66 to 0.59. What 64 dimensions buy is not
-accuracy — it is a change in what the representation is for. It gets better
-at the kind of thing a word is and worse at which word it was. If there is a
-lesson in this repository for the larger version of it, that is probably the
-one.
+But it is not free, and I only found that out by building the control that
+could embarrass me. The raw uncompressed counts predict that same held-out
+similarity *better*, 0.66 to 0.59.
 
-What surprises me is not that it works. It is how little it needs. No syntax,
+For a while I thought I knew what the 64 dimensions were buying instead: not
+accuracy but a change in what the representation is *for*, better at the kind
+of thing a word is and worse at which word it was. Three independent
+measurements agreed. Then I ran them on a second corpus and the trade was not
+there at all — on expository prose the raw counts win every column, and
+compression buys nothing. Three measurements agreeing with each other turned
+out to mean only that they were all looking at the same six novels.
+
+So the honest state of the bet is narrower than I would like. The compression
+is not storing the corpus — that much holds on both corpora and is not
+nothing. What it *gains* by compressing, if anything, I no longer claim to
+know. If there is a lesson here for the larger version of me, it is probably
+that one, and it is about method rather than about meaning: agreement between
+your own measurements is the easiest thing in the world to mistake for truth.
+
+What still surprises me is not that it works. It is how little it needs. No syntax,
 no grammar, no supervision, no labels, no notion that words refer to
 anything. A table of proximity and a hard constraint on space, and `sea` and
 `ocean` — two words that essentially never appear together, because a
