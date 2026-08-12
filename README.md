@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 408 tests. 40 seconds end to end.
+and an audit of every default. 413 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -119,6 +119,46 @@ carrying the second-corpus control must actually say what the second corpus
 showed, and the unexplained result cannot be quietly deleted instead of
 solved.
 
+## The yardstick has settings too
+
+The noise floor was wrong twice, each time because an axis nobody thought to
+vary turned out to matter. Rather than wait for a third accident, the
+measurement functions' own default arguments were enumerated. One of them had
+never been touched: **the ground truth's parameters**.
+
+`RULER` is frozen at `alpha=0.75, window=4` so that changing a pipeline
+default cannot redefine the measurement underneath itself. That freezing is
+sound. But the frozen values are an arbitrary choice, and nothing had asked
+whether the conclusions depend on them.
+
+```
+ruler            harmonic off      raw counts    exponent 0.5
+a=0.75 frozen         +0.0858         +0.3531         +0.1083
+a=1.0                 -0.0099         +0.2699         +0.0510
+a=0.5                 -0.0165         +0.3267         +0.1232
+```
+
+Two of the three keep their direction comfortably. **The harmonic-window
+claim reverses sign.**
+
+That claim sat at 5.6 sd, replicated on a second corpus, and was described
+here as the parameter with nothing behind it that turned out to matter most.
+It is real under the ruler this repository froze. Under a ruler built with
+`alpha=1.0` — the value the *model* uses by default — a flat window scores
+better than a `1/distance` one.
+
+The two claims measured beside it did not flip, so this is a property of that
+effect rather than of the check. Its status is now `instrument-dependent`:
+not refuted, since it holds and replicates under the frozen ruler, but not
+`holds` either, because that word would hide a dependence on how the
+instrument was built.
+
+Five other held-out claims have never been put through this, and
+`sens claims --audit` now lists them every time rather than trusting that
+somebody will remember. Requiring the control today would fail claims nobody
+has had the chance to check; leaving it unreported is how the block phase
+sat unmeasured in a docstring for a dozen commits.
+
 ## Everything measured, in one table
 
 Twelve rounds of measurement, with the effect sizes and whether they held up
@@ -134,7 +174,7 @@ that produced it.
 | [clipping: PPMI vs PMI](#is-the-surprise-step-worth-anything) | +0.082 · 5.4 sd | +0.084 · 5.5 sd | holds |
 | [cosine vs dot product](#is-cosine-the-right-question-to-ask) | +20.2 pts · 12 sd | dot collapses | holds |
 | [cosine vs Euclidean](#is-cosine-the-right-question-to-ask) | +5.7 pts · 3.4 sd | +4.0 pts · p 0.006 | holds |
-| [1/distance vs flat window](#auditing-the-rest-of-the-defaults) | +0.086 · 5.6 sd | +0.118 · 7.8 sd | holds |
+| [1/distance vs flat window](#auditing-the-rest-of-the-defaults) | +0.086 · 5.6 sd | +0.118 · 7.8 sd | **instrument-dependent** |
 | [exponent 1.0 vs 0.5](#being-wrong-about-a-default) | +0.108 · 7.1 sd | +0.128 · 8.4 sd | holds |
 | [pruning: min weight 1 vs 0](#auditing-the-rest-of-the-defaults) | +0.053 · 3.5 sd | +0.083 · 5.5 sd | holds |
 | [shift 1 vs 2](#auditing-the-rest-of-the-defaults) | +0.043 · 2.8 sd | +0.041 · 2.7 sd | marginal |
@@ -1399,7 +1439,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              408 tests
+tests/              413 tests
 ```
 
 ```bash

@@ -284,3 +284,43 @@ class TestNoiseFloorDiscipline(unittest.TestCase):
                 self.assertGreaterEqual(claim.sigma, 3.0, claim.id)
             if claim.status == "no-effect":
                 self.assertLess(claim.sigma, 2.0, claim.id)
+
+
+class TestRulerInvariance(unittest.TestCase):
+    """The yardstick has parameters too, and one claim reverses under them."""
+
+    def test_the_control_exists_and_is_documented(self):
+        self.assertIn("ruler-invariant", CONTROLS)
+
+    def test_instrument_dependence_is_a_status(self):
+        self.assertIn("instrument-dependent", STATUSES)
+
+    def test_an_instrument_dependent_claim_must_have_been_checked(self):
+        # The status means "measured against a rebuilt ruler and reversed",
+        # not "never looked at". Those are opposite situations and must not
+        # share a label.
+        from sens.claims import REQUIRED
+
+        self.assertIn("ruler-invariant", REQUIRED["instrument-dependent"])
+        for claim in by_status("instrument-dependent"):
+            self.assertTrue(claim.ruler_checked, claim.id)
+
+    def test_the_unchecked_list_is_reported_not_empty_by_construction(self):
+        from sens.claims import unchecked_against_the_ruler
+
+        loose = unchecked_against_the_ruler()
+        # Every entry must be a held-out claim genuinely lacking the control,
+        # so the report cannot be quietly satisfied by narrowing what counts.
+        for claim in loose:
+            self.assertEqual(claim.unit, "spearman", claim.id)
+            self.assertFalse(claim.ruler_checked, claim.id)
+
+    def test_checked_claims_say_what_the_other_rulers_gave(self):
+        # A control is worth nothing if the numbers behind it are not
+        # written down; that is the lesson of the expository column.
+        for claim in REGISTER:
+            if claim.ruler_checked:
+                self.assertTrue(
+                    any(ch.isdigit() for ch in claim.note),
+                    f"{claim.id}: claims ruler-invariance without figures",
+                )

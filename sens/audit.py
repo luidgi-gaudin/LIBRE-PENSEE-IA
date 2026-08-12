@@ -84,9 +84,18 @@ def build_ruler(
     pair_count: int = 4000,
     seed: int = 20260811,
     offset: int = 0,
+    ruler_overrides: dict | None = None,
 ) -> Ruler:
+    """`ruler_overrides` changes how the ground truth itself is computed.
+
+    RULER is frozen so that moving a pipeline default cannot redefine the
+    measurement underneath itself. But the frozen values are themselves an
+    arbitrary choice — the yardstick has parameters too, and nothing had ever
+    varied them. This exists so that `sens robustness` can ask whether the
+    conclusions depend on how the instrument was built.
+    """
     base = base or Config()
-    ruler = Config(**{**base.as_dict(), **RULER})
+    ruler = Config(**{**base.as_dict(), **RULER, **(ruler_overrides or {})})
 
     documents = [read_tokens(path) for path in paths]
     train, test = split_documents(documents, block=block, offset=offset)

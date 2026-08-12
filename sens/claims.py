@@ -71,6 +71,11 @@ CONTROLS: dict[str, str] = {
     "unbiased-metric": (
         "the metric has no structural reason to prefer the winner"
     ),
+    "ruler-invariant": (
+        "the effect keeps its direction when the ground truth itself is "
+        "rebuilt with different parameters — the yardstick has settings too, "
+        "and one 5.6 sd claim reverses sign when they change"
+    ),
 }
 
 # A claim of this status is only entitled to it if these controls were run.
@@ -94,6 +99,11 @@ REQUIRED: dict[str, frozenset[str]] = {
     "refuted": frozenset({"noise-floor", "second-corpus", "paired-test"}),
     "marginal": frozenset({"noise-floor"}),
     "no-effect": frozenset({"noise-floor"}),
+    # Real under the frozen ruler, and reversing under an equally defensible
+    # one. Not refuted — it replicates on a second corpus — but it is a fact
+    # about the measurement as much as about the model, and calling it
+    # `holds` would hide that.
+    "instrument-dependent": frozenset({"noise-floor", "ruler-invariant"}),
     "open": frozenset(),
 }
 
@@ -200,6 +210,10 @@ class Claim:
         return "second-corpus" in self.controls
 
     @property
+    def ruler_checked(self) -> bool:
+        return "ruler-invariant" in self.controls
+
+    @property
     def paired(self) -> bool:
         """Whether the evidence is a paired test rather than a point spread.
 
@@ -231,9 +245,11 @@ REGISTER: tuple[Claim, ...] = (
         novels="+0.3531 spearman",
         expository="+0.4787 spearman",
         sigma=23.2,
-        controls=_c("noise-floor", "second-corpus", "held-out"),
-        note="largest effect measured here; the step the README always "
-             "claimed was the important one, finally with a control",
+        controls=_c("noise-floor", "second-corpus", "held-out",
+                    "ruler-invariant"),
+        note="largest effect measured here, and the only one confirmed to "
+             "keep its direction under a rebuilt ground truth: +0.353, "
+             "+0.270, +0.327 across three ruler definitions",
         effect=0.3531,
         effect_expository=0.4787,
         unit="spearman",
@@ -271,13 +287,19 @@ REGISTER: tuple[Claim, ...] = (
         id="harmonic-window",
         what="weighting a neighbour by 1/distance beats a flat window",
         section="auditing-the-rest-of-the-defaults",
-        status="holds",
-        novels="+0.0858 spearman",
-        expository="+0.1179 spearman",
+        status="instrument-dependent",
+        novels="+0.0858 spearman under the frozen ruler; -0.0099 and "
+               "-0.0165 under two others",
+        expository="+0.1179 spearman under the frozen ruler",
         sigma=5.6,
-        controls=_c("noise-floor", "second-corpus", "held-out"),
-        note="the parameter that had nothing behind it but a sentence of "
-             "prose turned out to be among the largest effects",
+        controls=_c("noise-floor", "second-corpus", "held-out",
+                    "ruler-invariant"),
+        note="held at 5.6 sd and replicated, and it still reverses sign "
+             "when the ground truth is rebuilt with alpha 1.0 or 0.5. The "
+             "two claims measured alongside it kept their direction, so "
+             "this is a property of this effect rather than of the check. "
+             "Real under the ruler this repository froze, and that ruler is "
+             "one defensible choice among several",
         effect=0.0858,
         effect_expository=0.1179,
         unit="spearman",
@@ -292,9 +314,10 @@ REGISTER: tuple[Claim, ...] = (
         expository="+0.1283 spearman",
         sigma=7.1,
         controls=_c("noise-floor", "second-corpus", "held-out",
-                    "unbiased-metric"),
-        note="both curves turn over at an interior optimum, which is what "
-             "rules out the metric merely rewarding reconstruction",
+                    "unbiased-metric", "ruler-invariant"),
+        note="both curves turn over at an interior optimum, which rules out "
+             "the metric merely rewarding reconstruction; and the direction "
+             "survives rebuilding the ruler (+0.108, +0.051, +0.123)",
         effect=0.1083,
         effect_expository=0.1283,
         unit="spearman",
@@ -541,6 +564,21 @@ def unentitled() -> list[Claim]:
 def unreplicated() -> list[Claim]:
     """Claims that have only ever been measured on one corpus."""
     return [c for c in REGISTER if not c.replicated]
+
+
+def unchecked_against_the_ruler() -> list[Claim]:
+    """Claims never re-measured with the ground truth rebuilt.
+
+    Reported rather than required, because requiring it today would fail
+    claims nobody has had the chance to check. It is surfaced on every audit
+    so that "nobody has had the chance" cannot quietly become "nobody ever
+    did" — which is how the block phase went unmeasured for a dozen commits
+    after being written into a docstring.
+    """
+    return [
+        c for c in REGISTER
+        if c.unit == "spearman" and not c.ruler_checked
+    ]
 
 
 def header() -> str:

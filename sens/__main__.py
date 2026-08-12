@@ -515,6 +515,11 @@ def cmd_claims(args: argparse.Namespace) -> int:
               f"{len(register)})")
         for claim in thin:
             print(f"  {claim.id:<28} {claim.status}")
+        loose = claims_mod.unchecked_against_the_ruler()
+        print(f"\nheld-out claims never re-measured with the ground truth "
+              f"rebuilt ({len(loose)})")
+        for claim in loose:
+            print(f"  {claim.id:<28} {claim.status}")
         print("\ncontrols and what each rules out")
         for name in sorted(claims_mod.CONTROLS):
             used = sum(1 for c in register if name in c.controls)
