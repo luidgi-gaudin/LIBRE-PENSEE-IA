@@ -146,3 +146,67 @@ class TestClaimBehaviour(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestVerifiability(unittest.TestCase):
+    """The half of the register that does not take its own word for it."""
+
+    def test_a_useful_share_of_claims_can_be_re_derived(self):
+        checkable = [c for c in REGISTER if c.verifiable]
+        self.assertGreaterEqual(len(checkable), 8)
+
+    def test_a_recipe_and_a_number_travel_together(self):
+        # Either both or neither: a recipe with nothing to compare against
+        # verifies nothing, and a number with no recipe cannot be checked.
+        for claim in REGISTER:
+            self.assertEqual(
+                claim.check is not None,
+                claim.effect is not None,
+                claim.id,
+            )
+
+    def test_every_recipe_names_a_real_parameter(self):
+        from sens.pipeline import Config
+
+        config = Config()
+        for claim in REGISTER:
+            if claim.check:
+                self.assertTrue(
+                    hasattr(config, claim.check.parameter),
+                    f"{claim.id}: {claim.check.parameter}",
+                )
+
+    def test_every_recipe_actually_changes_something(self):
+        from sens.pipeline import Config
+
+        config = Config()
+        for claim in REGISTER:
+            if claim.check:
+                self.assertNotEqual(
+                    getattr(config, claim.check.parameter),
+                    claim.check.against,
+                    f"{claim.id} compares the default against itself",
+                )
+
+    def test_every_numeric_effect_has_a_unit(self):
+        for claim in REGISTER:
+            if claim.effect is not None:
+                self.assertTrue(claim.unit, claim.id)
+
+    def test_the_prose_and_the_number_agree_in_sign(self):
+        for claim in REGISTER:
+            if claim.effect is None:
+                continue
+            stated = claim.novels.strip()
+            if stated.startswith(("+", "-")):
+                self.assertEqual(
+                    stated[0] == "-", claim.effect < 0,
+                    f"{claim.id}: prose says {stated[0]}, number is {claim.effect}",
+                )
+
+    def test_every_unit_has_a_tolerance(self):
+        from sens.verify import TOLERANCE
+
+        for claim in REGISTER:
+            if claim.effect is not None:
+                self.assertIn(claim.unit, TOLERANCE, claim.id)

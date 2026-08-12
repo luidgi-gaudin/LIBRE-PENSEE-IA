@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 383 tests. 40 seconds end to end.
+and an audit of every default. 390 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -70,6 +70,25 @@ compression claim had a noise floor, three agreeing measurements and one
 corpus, and it passed. A register that cannot embarrass its author is
 decoration.
 
+And `python -m sens verify` closes the remaining gap, which is that every
+number in the register was typed in by a person. Ten claims carry a recipe
+for re-deriving themselves from the corpus; the command runs them and
+compares, with the rebuild spread as the tolerance.
+
+```
+claim                        recorded         observed          drift
+ppmi-vs-raw            recorded +0.3760  observed +0.3760  drift -0.0000  ok
+harmonic-window        recorded +0.1012  observed +0.1012  drift +0.0000  ok
+pair-pruning           recorded +0.0737  observed +0.0615  drift -0.0122  ok
+no-shift               recorded +0.0632  observed +0.0427  drift -0.0205  DRIFT
+```
+
+**It found drift on its first run too.** Six of ten reproduced to ±0.0000 —
+those were measured after the last default change. Four did not, because
+they were measured before it, against a baseline that then moved. One was
+outside tolerance. All four are corrected above, and re-derive to ±0.0001
+now.
+
 Nineteen tests hold it to that. A claim cannot be marked `holds` without
 replication, a refutation cannot be recorded without a paired test, a claim
 carrying the second-corpus control must actually say what the second corpus
@@ -93,14 +112,14 @@ that produced it.
 | [cosine vs Euclidean](#is-cosine-the-right-question-to-ask) | +5.7 pts · 7.5 sd | +4.0 pts · p 0.006 | holds |
 | [1/distance vs flat window](#auditing-the-rest-of-the-defaults) | +0.101 · 26 sd | +0.088 · 34 sd | holds |
 | [exponent 1.0 vs 0.5](#being-wrong-about-a-default) | +0.093 · 24 sd | +0.119 · 46 sd | holds |
-| [pruning: min weight 1 vs 0](#auditing-the-rest-of-the-defaults) | +0.074 · 19 sd | +0.060 · 23 sd | holds |
-| [shift 1 vs 2](#auditing-the-rest-of-the-defaults) | +0.063 · 16 sd | +0.042 · 16 sd | holds |
+| [pruning: min weight 1 vs 0](#auditing-the-rest-of-the-defaults) | +0.062 · 16 sd | +0.060 · 23 sd | holds |
+| [shift 1 vs 2](#auditing-the-rest-of-the-defaults) | +0.043 · 11 sd | +0.042 · 16 sd | holds |
 | [lowercasing vs keeping case](#tokenisation-the-last-stage-and-two-defaults-that-lose) | +0.013 · 3.4 sd, and 15% more vocabulary | +0.014 · 5.3 sd | holds |
 | [magnitude vs sign ranking](#ranking-by-magnitude-earns-its-place-the-negatives-do-not) | +2.4 pts top-1; 0 of 12 random draws matched | 16.9% vs 13.5% random | holds |
 | [smoothing: alpha 1.0 vs 0.75](#auditing-the-rest-of-the-defaults) | +0.009 · 2.4 sd | same direction | marginal |
 | [vocabulary 8000 vs 4000](#the-two-that-needed-a-different-ruler) | +0.008 · 2.1 sd | not run | marginal |
-| [window 4 vs 2](#auditing-the-rest-of-the-defaults) | +0.008 · 2.0 sd | not run | marginal |
-| [window 4 vs 6](#auditing-the-rest-of-the-defaults) | +0.001 · 0.3 sd | not run | **no effect** |
+| [window 4 vs 2](#auditing-the-rest-of-the-defaults) | +0.015 · 4.0 sd | not run | single-corpus |
+| [window 4 vs 6](#auditing-the-rest-of-the-defaults) | −0.003 · 0.7 sd | not run | **no effect** |
 | [min\_count 5 vs 20](#the-two-that-needed-a-different-ruler) | 0.002 · 0.5 sd | not run | **no effect** |
 | [3CosMul vs 3CosAdd](#morphological-analogy) | −0.001 · 0.4 sd | not run | **no effect** |
 | [accurate factorisation (Krylov)](#a-better-factorisation-that-made-a-worse-model) | −4.9 pts · 6 sd, 39% faster | +0.4 pts · p 0.87 | **refuted** |
@@ -882,12 +901,13 @@ frozen ruler, holding the rest fixed. It rebuilds the space once per value,
 so it takes several minutes.
 
 ```
-window            2=0.5830  4=0.5908  6=0.5895  10=0.5834
+window            2=0.5849  4=0.6002  6=0.6030  10=0.5999   <-- 6 beats 4
 harmonic          False=0.4990  True=0.6002
 weighting         raw=0.2243  log=0.3359  pmi=0.5234  ppmi=0.6002
 alpha             0.5=0.5651  0.75=0.5908  1.0=0.6002   <-- 1.0 beats 0.75
-shift             1.0=0.5908  2.0=0.5276  5.0=0.3409
-min_pair_weight   0.0=0.5171  1.0=0.5908  2.0=0.4950
+shift             1.0=0.6002  2.0=0.5576  5.0=0.4429
+min_pair_weight   0.0=0.5387  1.0=0.6002  2.0=0.4947
+eigenvalue_power  0.5=0.5077  0.75=0.5798  1.0=0.6002  1.25=0.5852
 ```
 
 **The `1/distance` weighting is the largest single effect in the pipeline**,
@@ -899,11 +919,19 @@ the far edge shout as loudly as the word next door. That argument turns out
 to be worth more than the entire factorisation-tuning effort several sections
 above.
 
-Five of six confirmed — though only two of them by a margin the
-[noise floor](#first-how-big-is-a-real-difference) can see. Window 4 beats
-window 6 by 0.3 sd, which is to say not at all; what the row actually shows
-is that anything between 4 and 6 is fine and the extremes are slightly worse.
-`shift` and `min_pair_weight` are solid at 16 and 19 sd.
+**This table was stale for six commits and `sens verify` caught it.** The
+rows above were first measured before the `alpha` default moved, so their
+baseline shifted underneath them; re-deriving the numbers from the corpus
+put four of them back where they belong. Window 4 against window 2 was
+recorded at 2.0 sd and is really 4.0. Window 4 against window 6 has flipped
+sign — 6 is now nominally ahead, by 0.7 sd, which is to say not at all.
+`shift` and `min_pair_weight` are solid at 11 and 16 sd rather than 16 and 19.
+
+None of the conclusions move. Every number did. That gap is the whole reason
+the register re-derives itself instead of trusting what was typed into it.
+
+What the window row actually shows is that anything from 4 to 10 is the same
+and only 2 is worse.
 
 `alpha` was not confirmed, and it has moved to 1.0 — which means the
 context-distribution smoothing is now *off*.
@@ -1268,7 +1296,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              383 tests
+tests/              390 tests
 ```
 
 ```bash

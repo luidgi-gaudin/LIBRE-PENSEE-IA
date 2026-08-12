@@ -15,6 +15,7 @@
     python -m sens subspaces
     python -m sens noise
     python -m sens claims
+    python -m sens verify
     python -m sens demo
     python -m sens info
 """
@@ -33,6 +34,7 @@ from . import baseline as baseline_mod
 from . import audit as audit_mod
 from . import noise as noise_mod
 from . import claims as claims_mod
+from . import verify as verify_mod
 from .pipeline import Config, build
 from .space import Space
 
@@ -531,6 +533,33 @@ def cmd_claims(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_verify(args: argparse.Namespace) -> int:
+    """Re-derive the register's numbers and check they still hold."""
+    works = corpus.available()
+    if not works:
+        sys.exit("no corpus files found; run `python -m sens fetch`")
+
+    verifiable = [c for c in claims_mod.REGISTER if c.verifiable]
+    print(f"{len(verifiable)} of {len(claims_mod.REGISTER)} claims carry a "
+          f"recipe for their own re-derivation", file=sys.stderr)
+    print("each rebuilds the space once; expect several minutes",
+          file=sys.stderr)
+
+    results = verify_mod.verify(
+        [w.path for w in works],
+        only=tuple(args.only or ()),
+        progress=lambda c: print(f"  {c.id} ...", file=sys.stderr, flush=True),
+    )
+    if not results:
+        sys.exit("no matching verifiable claims")
+
+    print("\n" + verify_mod.header())
+    for result in sorted(results, key=lambda r: -abs(r.claim.effect)):
+        print(result.row)
+    print("\n" + verify_mod.summarise(results))
+    return 0 if all(r.agrees for r in results) else 1
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     space = _load(args.space)
     meta = space.meta
@@ -662,6 +691,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--audit", action="store_true",
                    help="report claims whose controls do not match their status")
     p.set_defaults(func=cmd_claims)
+
+    p = sub.add_parser(
+        "verify", help="re-derive the register's numbers from the corpus"
+    )
+    p.add_argument("--only", nargs="+", help="claim ids to check")
+    p.set_defaults(func=cmd_verify)
 
     p = sub.add_parser("demo", help="a guided tour of the results")
     p.set_defaults(func=cmd_demo)

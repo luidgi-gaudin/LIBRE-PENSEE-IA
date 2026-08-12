@@ -86,6 +86,10 @@ CONTROLS: dict[str, str] = {
 # corpus, and this repository has already confused those once.
 REQUIRED: dict[str, frozenset[str]] = {
     "holds": frozenset({"noise-floor", "second-corpus"}),
+    # Solid where it was measured, and measured in one place. Distinguished
+    # from `marginal` because conflating "weak effect" with "unreplicated
+    # effect" hides which of the two a reader should discount.
+    "single-corpus": frozenset({"noise-floor"}),
     "backwards": frozenset({"noise-floor", "second-corpus"}),
     "refuted": frozenset({"noise-floor", "second-corpus", "paired-test"}),
     "marginal": frozenset({"noise-floor"}),
@@ -94,6 +98,26 @@ REQUIRED: dict[str, frozenset[str]] = {
 }
 
 STATUSES = tuple(REQUIRED)
+
+
+@dataclass(frozen=True)
+class ConfigDelta:
+    """How to re-derive a claim: rebuild with one parameter changed.
+
+    The register's numbers were all typed in by hand, which makes it a
+    checklist that trusts its own entries. This is the part that does not:
+    given a parameter and an alternative value, the effect can be recomputed
+    from the corpus and compared against what was written down. A refactor
+    that silently changes a result, or a digit transposed while writing the
+    README, then stops being invisible.
+    """
+
+    parameter: str
+    against: object
+
+    @property
+    def summary(self) -> str:
+        return f"{self.parameter} vs {self.against!r}"
 
 
 @dataclass(frozen=True)
@@ -109,6 +133,15 @@ class Claim:
     sigma: float | None = None
     controls: frozenset[str] = field(default_factory=frozenset)
     note: str = ""
+    # The machine-checkable part. `effect` is the number `novels` states in
+    # prose; `check` says how to get it back out of the corpus.
+    effect: float | None = None
+    unit: str = ""
+    check: "ConfigDelta | None" = None
+
+    @property
+    def verifiable(self) -> bool:
+        return self.check is not None and self.effect is not None
 
     @property
     def missing(self) -> frozenset[str]:
@@ -144,6 +177,9 @@ REGISTER: tuple[Claim, ...] = (
         controls=_c("noise-floor", "second-corpus", "held-out"),
         note="largest effect measured here; the step the README always "
              "claimed was the important one, finally with a control",
+        effect=0.376,
+        unit="spearman",
+        check=ConfigDelta("weighting", 'raw'),
     ),
     Claim(
         id="ppmi-vs-log",
@@ -155,6 +191,9 @@ REGISTER: tuple[Claim, ...] = (
         expository="+0.2600 spearman",
         sigma=69.0,
         controls=_c("noise-floor", "second-corpus", "held-out"),
+        effect=0.2643,
+        unit="spearman",
+        check=ConfigDelta("weighting", 'log'),
     ),
     Claim(
         id="cosine-vs-dot",
@@ -179,6 +218,9 @@ REGISTER: tuple[Claim, ...] = (
         controls=_c("noise-floor", "second-corpus", "held-out"),
         note="the parameter that had nothing behind it but a sentence of "
              "prose turned out to be among the largest effects",
+        effect=0.1012,
+        unit="spearman",
+        check=ConfigDelta("harmonic", False),
     ),
     Claim(
         id="eigenvalue-exponent",
@@ -192,6 +234,9 @@ REGISTER: tuple[Claim, ...] = (
                     "unbiased-metric"),
         note="both curves turn over at an interior optimum, which is what "
              "rules out the metric merely rewarding reconstruction",
+        effect=0.0925,
+        unit="spearman",
+        check=ConfigDelta("eigenvalue_power", 0.5),
     ),
     Claim(
         id="clipping",
@@ -203,26 +248,35 @@ REGISTER: tuple[Claim, ...] = (
         sigma=20.0,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         note="on held-out only; on analogy the two are indistinguishable",
+        effect=0.0769,
+        unit="spearman",
+        check=ConfigDelta("weighting", 'pmi'),
     ),
     Claim(
         id="pair-pruning",
         what="discarding pairs seen once or less beats keeping everything",
         section="auditing-the-rest-of-the-defaults",
         status="holds",
-        novels="+0.0737 spearman",
+        novels="+0.0615 spearman",
         expository="+0.0598 spearman",
-        sigma=19.0,
+        sigma=16.2,
         controls=_c("noise-floor", "second-corpus", "held-out"),
+        effect=0.0615,
+        unit="spearman",
+        check=ConfigDelta("min_pair_weight", 0.0),
     ),
     Claim(
         id="no-shift",
         what="not shifting PMI beats shifting it",
         section="auditing-the-rest-of-the-defaults",
         status="holds",
-        novels="+0.0632 spearman",
+        novels="+0.0427 spearman",
         expository="+0.0418 spearman",
-        sigma=16.0,
+        sigma=11.2,
         controls=_c("noise-floor", "second-corpus", "held-out"),
+        effect=0.0427,
+        unit="spearman",
+        check=ConfigDelta("shift", 2.0),
     ),
     Claim(
         id="cosine-vs-euclidean",
@@ -277,6 +331,9 @@ REGISTER: tuple[Claim, ...] = (
         controls=_c("noise-floor", "second-corpus", "held-out"),
         note="rests on one metric. The analogy benchmark was reported as "
              "independent confirmation and at 0.8 sd confirms nothing",
+        effect=0.0094,
+        unit="spearman",
+        check=ConfigDelta("alpha", 0.75),
     ),
     Claim(
         id="vocabulary-size",
@@ -292,10 +349,16 @@ REGISTER: tuple[Claim, ...] = (
         id="window-size",
         what="a window of 4 beats a window of 2",
         section="auditing-the-rest-of-the-defaults",
-        status="marginal",
-        novels="+0.0078 spearman",
-        sigma=2.0,
+        status="single-corpus",
+        novels="+0.0153 spearman",
+        sigma=4.0,
         controls=_c("noise-floor", "held-out"),
+        note="recorded at 2.0 sd until `sens verify` re-derived it. The "
+             "original figure was measured before the alpha default moved, "
+             "so its baseline had shifted underneath it",
+        effect=0.0153,
+        unit="spearman",
+        check=ConfigDelta("window", 2),
     ),
 
     # --- measured and absent ------------------------------------------------
@@ -304,10 +367,15 @@ REGISTER: tuple[Claim, ...] = (
         what="a window of 4 beats a window of 6",
         section="auditing-the-rest-of-the-defaults",
         status="no-effect",
-        novels="+0.0013 spearman",
-        sigma=0.3,
+        novels="-0.0028 spearman; 6 is nominally ahead",
+        sigma=0.7,
         controls=_c("noise-floor", "held-out"),
-        note="anything between 4 and 6 is the same",
+        note="anything between 4 and 6 is the same, and which of them is "
+             "nominally ahead flips with the baseline — it flipped when the "
+             "alpha default moved",
+        effect=-0.0028,
+        unit="spearman",
+        check=ConfigDelta("window", 6),
     ),
     Claim(
         id="min-count",
