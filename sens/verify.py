@@ -31,7 +31,8 @@ from .pipeline import Config
 # re-derived effect is a difference of two such numbers, so it inherits
 # roughly twice the variance; the tolerance is set accordingly rather than
 # optimistically.
-HELDOUT_SD = 0.0038
+# Re-measured after the document-split fix, which raised it from 0.0038.
+HELDOUT_SD = 0.0047
 TOLERANCE = {"spearman": 4 * HELDOUT_SD}
 
 
@@ -42,10 +43,15 @@ class Result:
     claim: Claim
     observed: float
     seconds: float
+    collection: str = "novels"
+
+    @property
+    def recorded(self) -> float:
+        return self.claim.recorded(self.collection) or 0.0
 
     @property
     def drift(self) -> float:
-        return self.observed - (self.claim.effect or 0.0)
+        return self.observed - self.recorded
 
     @property
     def tolerance(self) -> float:
@@ -59,7 +65,7 @@ class Result:
     def row(self) -> str:
         mark = "ok " if self.agrees else "DRIFT"
         return (
-            f"{self.claim.id:<22} recorded {self.claim.effect:+.4f}  "
+            f"{self.claim.id:<22} recorded {self.recorded:+.4f}  "
             f"observed {self.observed:+.4f}  drift {self.drift:+.4f}  "
             f"{mark:<5} {self.seconds:5.1f}s"
         )
@@ -80,12 +86,19 @@ def verify(
     only: tuple[str, ...] = (),
     base: Config | None = None,
     progress=None,
+    collection: str = "novels",
 ) -> list[Result]:
-    """Re-derive every verifiable claim, or just the named ones."""
+    """Re-derive every verifiable claim, or just the named ones.
+
+    `collection` selects which recorded number to check against. The
+    replication figures were measured once, by hand, in a terminal, and
+    lived nowhere the code could see — exactly the situation that let the
+    novels column go stale for six commits.
+    """
     base = base or Config()
     wanted = [
         c for c in REGISTER
-        if c.verifiable and (not only or c.id in only)
+        if c.checkable_on(collection) and (not only or c.id in only)
     ]
     if not wanted:
         return []
@@ -108,6 +121,7 @@ def verify(
                 claim=claim,
                 observed=baseline - alternative,
                 seconds=time.time() - start,
+                collection=collection,
             )
         )
     return results

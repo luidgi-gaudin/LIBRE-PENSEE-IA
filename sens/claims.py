@@ -136,12 +136,22 @@ class Claim:
     # The machine-checkable part. `effect` is the number `novels` states in
     # prose; `check` says how to get it back out of the corpus.
     effect: float | None = None
+    effect_expository: float | None = None
     unit: str = ""
     check: "ConfigDelta | None" = None
 
     @property
     def verifiable(self) -> bool:
         return self.check is not None and self.effect is not None
+
+    def recorded(self, collection: str) -> float | None:
+        """The effect this claim records for a given corpus."""
+        if collection == "expository":
+            return self.effect_expository
+        return self.effect
+
+    def checkable_on(self, collection: str) -> bool:
+        return self.check is not None and self.recorded(collection) is not None
 
     @property
     def missing(self) -> frozenset[str]:
@@ -171,13 +181,14 @@ REGISTER: tuple[Claim, ...] = (
         what="PPMI beats using the raw co-occurrence counts",
         section="is-the-surprise-step-worth-anything",
         status="holds",
-        novels="+0.3760 spearman",
-        expository="+0.4605 spearman",
-        sigma=98.0,
+        novels="+0.3531 spearman",
+        expository="+0.4787 spearman",
+        sigma=75.0,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         note="largest effect measured here; the step the README always "
              "claimed was the important one, finally with a control",
-        effect=0.376,
+        effect=0.3531,
+        effect_expository=0.4787,
         unit="spearman",
         check=ConfigDelta("weighting", 'raw'),
     ),
@@ -187,11 +198,12 @@ REGISTER: tuple[Claim, ...] = (
              "comparison against independence and not range squashing",
         section="is-the-surprise-step-worth-anything",
         status="holds",
-        novels="+0.2643 spearman",
-        expository="+0.2600 spearman",
-        sigma=69.0,
+        novels="+0.2669 spearman",
+        expository="+0.2802 spearman",
+        sigma=57.0,
         controls=_c("noise-floor", "second-corpus", "held-out"),
-        effect=0.2643,
+        effect=0.2669,
+        effect_expository=0.2802,
         unit="spearman",
         check=ConfigDelta("weighting", 'log'),
     ),
@@ -212,13 +224,14 @@ REGISTER: tuple[Claim, ...] = (
         what="weighting a neighbour by 1/distance beats a flat window",
         section="auditing-the-rest-of-the-defaults",
         status="holds",
-        novels="+0.1012 spearman",
-        expository="+0.0881 spearman",
-        sigma=26.0,
+        novels="+0.0858 spearman",
+        expository="+0.1179 spearman",
+        sigma=18.0,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         note="the parameter that had nothing behind it but a sentence of "
              "prose turned out to be among the largest effects",
-        effect=0.1012,
+        effect=0.0858,
+        effect_expository=0.1179,
         unit="spearman",
         check=ConfigDelta("harmonic", False),
     ),
@@ -227,14 +240,15 @@ REGISTER: tuple[Claim, ...] = (
         what="scaling axes by |eigenvalue| beats the conventional square root",
         section="being-wrong-about-a-default",
         status="holds",
-        novels="+0.0925 spearman",
-        expository="+0.1189 spearman",
-        sigma=24.0,
+        novels="+0.1083 spearman",
+        expository="+0.1283 spearman",
+        sigma=23.0,
         controls=_c("noise-floor", "second-corpus", "held-out",
                     "unbiased-metric"),
         note="both curves turn over at an interior optimum, which is what "
              "rules out the metric merely rewarding reconstruction",
-        effect=0.0925,
+        effect=0.1083,
+        effect_expository=0.1283,
         unit="spearman",
         check=ConfigDelta("eigenvalue_power", 0.5),
     ),
@@ -243,12 +257,13 @@ REGISTER: tuple[Claim, ...] = (
         what="clipping negative PMI beats keeping it",
         section="is-the-surprise-step-worth-anything",
         status="holds",
-        novels="+0.0769 spearman",
-        expository="+0.0728 spearman",
-        sigma=20.0,
+        novels="+0.0822 spearman",
+        expository="+0.0837 spearman",
+        sigma=17.0,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         note="on held-out only; on analogy the two are indistinguishable",
-        effect=0.0769,
+        effect=0.0822,
+        effect_expository=0.0837,
         unit="spearman",
         check=ConfigDelta("weighting", 'pmi'),
     ),
@@ -257,11 +272,12 @@ REGISTER: tuple[Claim, ...] = (
         what="discarding pairs seen once or less beats keeping everything",
         section="auditing-the-rest-of-the-defaults",
         status="holds",
-        novels="+0.0615 spearman",
-        expository="+0.0598 spearman",
-        sigma=16.2,
+        novels="+0.0533 spearman",
+        expository="+0.0832 spearman",
+        sigma=11.0,
         controls=_c("noise-floor", "second-corpus", "held-out"),
-        effect=0.0615,
+        effect=0.0533,
+        effect_expository=0.0832,
         unit="spearman",
         check=ConfigDelta("min_pair_weight", 0.0),
     ),
@@ -270,11 +286,12 @@ REGISTER: tuple[Claim, ...] = (
         what="not shifting PMI beats shifting it",
         section="auditing-the-rest-of-the-defaults",
         status="holds",
-        novels="+0.0427 spearman",
-        expository="+0.0418 spearman",
-        sigma=11.2,
+        novels="+0.0426 spearman",
+        expository="+0.0408 spearman",
+        sigma=9.1,
         controls=_c("noise-floor", "second-corpus", "held-out"),
-        effect=0.0427,
+        effect=0.0426,
+        effect_expository=0.0408,
         unit="spearman",
         check=ConfigDelta("shift", 2.0),
     ),
@@ -324,14 +341,16 @@ REGISTER: tuple[Claim, ...] = (
         id="alpha-smoothing-off",
         what="no context-distribution smoothing beats the usual 0.75",
         section="auditing-the-rest-of-the-defaults",
-        status="marginal",
-        novels="+0.0094 spearman",
+        status="no-effect",
+        novels="+0.0042 spearman",
         expository="same direction",
-        sigma=2.4,
+        sigma=0.9,
         controls=_c("noise-floor", "second-corpus", "held-out"),
-        note="rests on one metric. The analogy benchmark was reported as "
-             "independent confirmation and at 0.8 sd confirms nothing",
-        effect=0.0094,
+        note="the default moved to 1.0 on a 2.4 sd result. Re-derived "
+             "after the document-split fix it is 0.9 sd — within noise. The "
+             "two settings are indistinguishable; 1.0 stays because it is "
+             "the simpler of two equals, not because it is better",
+        effect=0.0042,
         unit="spearman",
         check=ConfigDelta("alpha", 0.75),
     ),
@@ -350,13 +369,12 @@ REGISTER: tuple[Claim, ...] = (
         what="a window of 4 beats a window of 2",
         section="auditing-the-rest-of-the-defaults",
         status="single-corpus",
-        novels="+0.0153 spearman",
-        sigma=4.0,
+        novels="+0.0219 spearman",
+        sigma=4.6,
         controls=_c("noise-floor", "held-out"),
-        note="recorded at 2.0 sd until `sens verify` re-derived it. The "
-             "original figure was measured before the alpha default moved, "
-             "so its baseline had shifted underneath it",
-        effect=0.0153,
+        note="recorded at 2.0 sd, then 4.0, now 4.6. Twice moved by "
+             "`sens verify` catching a stale baseline underneath it",
+        effect=0.0219,
         unit="spearman",
         check=ConfigDelta("window", 2),
     ),
@@ -367,13 +385,13 @@ REGISTER: tuple[Claim, ...] = (
         what="a window of 4 beats a window of 6",
         section="auditing-the-rest-of-the-defaults",
         status="no-effect",
-        novels="-0.0028 spearman; 6 is nominally ahead",
-        sigma=0.7,
+        novels="-0.0039 spearman",
+        sigma=0.8,
         controls=_c("noise-floor", "held-out"),
         note="anything between 4 and 6 is the same, and which of them is "
              "nominally ahead flips with the baseline — it flipped when the "
              "alpha default moved",
-        effect=-0.0028,
+        effect=-0.0039,
         unit="spearman",
         check=ConfigDelta("window", 6),
     ),

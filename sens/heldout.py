@@ -59,6 +59,33 @@ RULER = {
 }
 
 
+def split_documents(
+    documents: list[list[str]], block: int = 4000
+) -> tuple[list[str], list[str]]:
+    """Split each document independently, then concatenate.
+
+    `split_blocks` alternates over one stream, so where a document boundary
+    falls decides the phase of every block after it — and therefore which
+    half of the corpus a token lands in. That made the held-out split depend
+    on the order the files happened to be listed in, which is incidental,
+    and `sens verify` measured the sensitivity at 5 to 6 standard deviations:
+    larger than the random seed, from a choice nobody thought they were
+    making.
+
+    Splitting per document removes it. A document contributes the same
+    blocks to train and to test wherever it sits in the list. The
+    concatenation order still varies, but that only affects adjacency across
+    the handful of joins, not membership.
+    """
+    train: list[str] = []
+    test: list[str] = []
+    for document in documents:
+        left, right = split_blocks(document, block=block)
+        train.extend(left)
+        test.extend(right)
+    return train, test
+
+
 def split_blocks(
     tokens: list[str], block: int = 4000
 ) -> tuple[list[str], list[str]]:
@@ -179,10 +206,9 @@ def prepare(
     config = config or Config()
     truth_config = truth_config or Config(**{**config.as_dict(), **RULER})
 
-    tokens: list[str] = []
-    for path in paths:
-        tokens.extend(read_tokens(path))
-    train, test = split_blocks(tokens, block=block)
+    documents = [read_tokens(path) for path in paths]
+    tokens = [t for d in documents for t in d]
+    train, test = split_documents(documents, block=block)
 
     space, _ = build_from_tokens(train, config, verbose=verbose)
 

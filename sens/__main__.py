@@ -535,11 +535,13 @@ def cmd_claims(args: argparse.Namespace) -> int:
 
 def cmd_verify(args: argparse.Namespace) -> int:
     """Re-derive the register's numbers and check they still hold."""
-    works = corpus.available()
+    works = corpus.available(args.collection)
     if not works:
-        sys.exit("no corpus files found; run `python -m sens fetch`")
+        sys.exit(f"no {args.collection} corpus on disk; run "
+                 f"`python -m sens fetch --collection {args.collection}`")
 
-    verifiable = [c for c in claims_mod.REGISTER if c.verifiable]
+    verifiable = [c for c in claims_mod.REGISTER
+                  if c.checkable_on(args.collection)]
     print(f"{len(verifiable)} of {len(claims_mod.REGISTER)} claims carry a "
           f"recipe for their own re-derivation", file=sys.stderr)
     print("each rebuilds the space once; expect several minutes",
@@ -548,13 +550,14 @@ def cmd_verify(args: argparse.Namespace) -> int:
     results = verify_mod.verify(
         [w.path for w in works],
         only=tuple(args.only or ()),
+        collection=args.collection,
         progress=lambda c: print(f"  {c.id} ...", file=sys.stderr, flush=True),
     )
     if not results:
         sys.exit("no matching verifiable claims")
 
     print("\n" + verify_mod.header())
-    for result in sorted(results, key=lambda r: -abs(r.claim.effect)):
+    for result in sorted(results, key=lambda r: -abs(r.recorded)):
         print(result.row)
     print("\n" + verify_mod.summarise(results))
     return 0 if all(r.agrees for r in results) else 1
@@ -696,6 +699,9 @@ def main(argv: list[str] | None = None) -> int:
         "verify", help="re-derive the register's numbers from the corpus"
     )
     p.add_argument("--only", nargs="+", help="claim ids to check")
+    p.add_argument("--collection", default="novels",
+                   choices=sorted(corpus.COLLECTIONS),
+                   help="which corpus's recorded numbers to re-derive")
     p.set_defaults(func=cmd_verify)
 
     p = sub.add_parser("demo", help="a guided tour of the results")

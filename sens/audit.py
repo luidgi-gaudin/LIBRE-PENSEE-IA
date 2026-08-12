@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 
 from .counts import cooccurrence
 from .heldout import (RULER, build_from_tokens, sparse_cosine, spearman,
-                      split_blocks)
+                      split_documents)
 from .linalg import SparseMatrix
 from .pipeline import Config
 from .text import Vocabulary, read_tokens
@@ -87,10 +87,8 @@ def build_ruler(
     base = base or Config()
     ruler = Config(**{**base.as_dict(), **RULER})
 
-    tokens: list[str] = []
-    for path in paths:
-        tokens.extend(read_tokens(path))
-    train, test = split_blocks(tokens, block=block)
+    documents = [read_tokens(path) for path in paths]
+    train, test = split_documents(documents, block=block)
 
     vocab = Vocabulary.from_tokens(
         train, max_size=base.vocab_size, min_count=base.min_count
@@ -211,10 +209,8 @@ def audit_vocabulary(
     base = base or Config()
     ruler_cfg = Config(**{**base.as_dict(), **RULER})
 
-    tokens: list[str] = []
-    for path in paths:
-        tokens.extend(read_tokens(path))
-    train, test = split_blocks(tokens, block=block)
+    documents = [read_tokens(path) for path in paths]
+    train, test = split_documents(documents, block=block)
 
     reference = Vocabulary.from_tokens(
         train, max_size=max(sizes), min_count=min(min_counts)
@@ -332,10 +328,8 @@ def audit_tokenisation(
     base = base or Config()
     ruler_cfg = Config(**{**base.as_dict(), **RULER})
 
-    reference_tokens: list[str] = []
-    for path in paths:
-        reference_tokens.extend(read_tokens(path))
-    train, test = split_blocks(reference_tokens, block=block)
+    documents = [read_tokens(path) for path in paths]
+    train, test = split_documents(documents, block=block)
 
     vocab = Vocabulary.from_tokens(
         train, max_size=base.vocab_size, min_count=base.min_count
@@ -378,15 +372,16 @@ def audit_tokenisation(
         if progress:
             progress("tokenisation", label)
         config = Config(**{**base.as_dict(), **overrides})
-        tokens: list[str] = []
-        for path in paths:
-            tokens.extend(read_tokens(
+        candidate_docs = [
+            read_tokens(
                 path,
                 lowercase=config.lowercase,
                 fold_accents=config.fold_accents,
                 split_clitics=config.split_clitics,
-            ))
-        candidate_train, _ = split_blocks(tokens, block=block)
+            )
+            for path in paths
+        ]
+        candidate_train, _ = split_documents(candidate_docs, block=block)
         spaces[label], _ = build_from_tokens(
             candidate_train, config, verbose=False
         )

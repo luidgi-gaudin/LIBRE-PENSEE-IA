@@ -36,14 +36,17 @@ def ppmi(
     scores in any corpus belong to typos and hapax legomena. 0.75 is the
     value word2vec's negative sampler uses, arrived at empirically.
 
-    It does not transfer here. `sens audit` finds 1.0 — no smoothing at all —
-    beating 0.75 on held-out similarity and on analogy alike, so the default
-    is 1.0 and this parameter is off unless someone turns it on. The obvious
-    explanation, that the vocabulary cap has already removed the rare tail
-    the smoothing exists to tame, was tested by raising the cap to 12,000
-    words with a floor of three occurrences. The effect did not reverse. Why
-    the correction fails on this corpus is unexplained rather than explained,
-    which is the honest state of it.
+    It does nothing here, and the story of finding that out is instructive.
+    `sens audit` first put 1.0 ahead of 0.75 by 2.4 standard deviations, and
+    the default moved on that. Re-derived after the held-out split was made
+    independent of file ordering, the same comparison is 0.9 sd — inside the
+    noise. The two settings are indistinguishable on this corpus. 1.0 remains
+    the default because it is the simpler of two equals, not because it wins.
+
+    An explanation was offered and killed along the way: that the vocabulary
+    cap has already removed the rare tail smoothing exists to tame. That
+    predicts the effect reverses with a bigger vocabulary. Raising the cap to
+    12,000 words with a floor of three occurrences did not reverse it.
 
     `shift` subtracts `log(shift)` from every score before clipping, which is
     the explicit form of skip-gram's negative sampling count. Raising it

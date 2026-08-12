@@ -83,11 +83,35 @@ pair-pruning           recorded +0.0737  observed +0.0615  drift -0.0122  ok
 no-shift               recorded +0.0632  observed +0.0427  drift -0.0205  DRIFT
 ```
 
-**It found drift on its first run too.** Six of ten reproduced to ±0.0000 —
-those were measured after the last default change. Four did not, because
-they were measured before it, against a baseline that then moved. One was
-outside tolerance. All four are corrected above, and re-derive to ±0.0001
-now.
+**It found drift on its first run, and then found something worse.**
+
+Six of ten reproduced to ±0.0000 and four did not — the four measured before
+the `alpha` default moved, against a baseline that then shifted underneath
+them. Fixable by re-deriving.
+
+Extending the same check to the *second* corpus is what turned up the real
+defect. Two claims drifted there for a reason nothing in the repository had
+considered: the expository figures were measured on files sorted by Gutenberg
+number, and re-measured on the same files in library order. `split_blocks`
+alternated over the *concatenated* token stream, so where a document boundary
+fell decided the phase of every block after it — and therefore which half of
+the corpus each token landed in.
+
+The corpus was identical. The train/test split was not. **File ordering,
+which nobody thought was a decision, moved results by 5 to 6 standard
+deviations — more than the random seed does.**
+
+`split_documents` now splits each document independently, so a book
+contributes the same blocks wherever it sits in the list. That silently
+changed every held-out number in this README, so all of them were re-derived
+and the noise floor re-measured (0.0047, up from 0.0038).
+
+One conclusion did not survive. **Context smoothing was 2.4 sd and is now
+0.9 sd** — inside the noise. This repository changed that default on the
+strength of a difference that the corrected split says is not there. The
+default stays at 1.0, because two indistinguishable settings may as well be
+decided by simplicity, but the justification is now "they are the same"
+rather than "this one wins".
 
 Nineteen tests hold it to that. A claim cannot be marked `holds` without
 replication, a refutation cannot be recorded without a paired test, a claim
@@ -105,21 +129,21 @@ that produced it.
 
 | what was tested | novels | expository | verdict |
 | --- | --- | --- | --- |
-| [PPMI vs raw counts](#is-the-surprise-step-worth-anything) | +0.376 · 98 sd | +0.461 · 178 sd | holds |
-| [PPMI vs log counts](#is-the-surprise-step-worth-anything) | +0.264 · 69 sd | +0.260 · 100 sd | holds |
-| [clipping: PPMI vs PMI](#is-the-surprise-step-worth-anything) | +0.077 · 20 sd | +0.073 · 28 sd | holds |
+| [PPMI vs raw counts](#is-the-surprise-step-worth-anything) | +0.353 · 75 sd | +0.479 · 102 sd | holds |
+| [PPMI vs log counts](#is-the-surprise-step-worth-anything) | +0.267 · 57 sd | +0.280 · 60 sd | holds |
+| [clipping: PPMI vs PMI](#is-the-surprise-step-worth-anything) | +0.082 · 17 sd | +0.084 · 18 sd | holds |
 | [cosine vs dot product](#is-cosine-the-right-question-to-ask) | +20.2 pts · 26 sd | dot collapses | holds |
 | [cosine vs Euclidean](#is-cosine-the-right-question-to-ask) | +5.7 pts · 7.5 sd | +4.0 pts · p 0.006 | holds |
-| [1/distance vs flat window](#auditing-the-rest-of-the-defaults) | +0.101 · 26 sd | +0.088 · 34 sd | holds |
-| [exponent 1.0 vs 0.5](#being-wrong-about-a-default) | +0.093 · 24 sd | +0.119 · 46 sd | holds |
-| [pruning: min weight 1 vs 0](#auditing-the-rest-of-the-defaults) | +0.062 · 16 sd | +0.060 · 23 sd | holds |
-| [shift 1 vs 2](#auditing-the-rest-of-the-defaults) | +0.043 · 11 sd | +0.042 · 16 sd | holds |
+| [1/distance vs flat window](#auditing-the-rest-of-the-defaults) | +0.086 · 18 sd | +0.118 · 25 sd | holds |
+| [exponent 1.0 vs 0.5](#being-wrong-about-a-default) | +0.108 · 23 sd | +0.128 · 27 sd | holds |
+| [pruning: min weight 1 vs 0](#auditing-the-rest-of-the-defaults) | +0.053 · 11 sd | +0.083 · 18 sd | holds |
+| [shift 1 vs 2](#auditing-the-rest-of-the-defaults) | +0.043 · 9.1 sd | +0.041 · 8.7 sd | holds |
 | [lowercasing vs keeping case](#tokenisation-the-last-stage-and-two-defaults-that-lose) | +0.013 · 3.4 sd, and 15% more vocabulary | +0.014 · 5.3 sd | holds |
 | [magnitude vs sign ranking](#ranking-by-magnitude-earns-its-place-the-negatives-do-not) | +2.4 pts top-1; 0 of 12 random draws matched | 16.9% vs 13.5% random | holds |
-| [smoothing: alpha 1.0 vs 0.75](#auditing-the-rest-of-the-defaults) | +0.009 · 2.4 sd | same direction | marginal |
+| [smoothing: alpha 1.0 vs 0.75](#auditing-the-rest-of-the-defaults) | +0.004 · 0.9 sd | — | **no effect** |
 | [vocabulary 8000 vs 4000](#the-two-that-needed-a-different-ruler) | +0.008 · 2.1 sd | not run | marginal |
-| [window 4 vs 2](#auditing-the-rest-of-the-defaults) | +0.015 · 4.0 sd | not run | single-corpus |
-| [window 4 vs 6](#auditing-the-rest-of-the-defaults) | −0.003 · 0.7 sd | not run | **no effect** |
+| [window 4 vs 2](#auditing-the-rest-of-the-defaults) | +0.022 · 4.6 sd | not run | single-corpus |
+| [window 4 vs 6](#auditing-the-rest-of-the-defaults) | −0.004 · 0.8 sd | not run | **no effect** |
 | [min\_count 5 vs 20](#the-two-that-needed-a-different-ruler) | 0.002 · 0.5 sd | not run | **no effect** |
 | [3CosMul vs 3CosAdd](#morphological-analogy) | −0.001 · 0.4 sd | not run | **no effect** |
 | [accurate factorisation (Krylov)](#a-better-factorisation-that-made-a-worse-model) | −4.9 pts · 6 sd, 39% faster | +0.4 pts · p 0.87 | **refuted** |
@@ -127,9 +151,13 @@ that produced it.
 | [64 dims beat 160 on category](#how-many-dimensions-and-the-trade-seen-directly) | p 0.034 | p 0.91 | **refuted** |
 
 Nine of the eleven large effects replicate on a corpus with nothing in
-common but the language. Three parameters everyone tunes turn out to do
-nothing measurable. And three rows did not survive replication, including
-the two this repository once led with.
+common but the language. Four parameters everyone tunes turn out to do
+nothing measurable — including the context smoothing whose default this
+repository once changed. Three rows did not survive replication, including
+the two it once led with.
+
+Every held-out number above is re-derivable by `python -m sens verify`, and
+all seventeen currently reproduce to ±0.0000. They did not always.
 
 ### Things this README claimed and then withdrew
 
