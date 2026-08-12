@@ -16,6 +16,7 @@
     python -m sens noise
     python -m sens claims
     python -m sens verify
+    python -m sens robustness
     python -m sens demo
     python -m sens info
 """
@@ -35,6 +36,7 @@ from . import audit as audit_mod
 from . import noise as noise_mod
 from . import claims as claims_mod
 from . import verify as verify_mod
+from . import robustness as robustness_mod
 from .pipeline import Config, build
 from .space import Space
 
@@ -563,6 +565,24 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0 if all(r.agrees for r in results) else 1
 
 
+def cmd_robustness(args: argparse.Namespace) -> int:
+    """How much moves when nothing about the method does."""
+    works = corpus.available(args.collection)
+    if not works:
+        sys.exit(f"no {args.collection} corpus on disk")
+    print("varying each incidental choice in turn; several minutes",
+          file=sys.stderr)
+    axes = robustness_mod.probe(
+        [w.path for w in works],
+        progress=lambda a, v: print(f"  {a}={v} ...", file=sys.stderr, flush=True),
+    )
+    print("\n  " + robustness_mod.header())
+    for axis in axes:
+        print("  " + axis.row)
+    print("\n  " + robustness_mod.verdict(axes, args.seed_floor))
+    return 0
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     space = _load(args.space)
     meta = space.meta
@@ -703,6 +723,14 @@ def main(argv: list[str] | None = None) -> int:
                    choices=sorted(corpus.COLLECTIONS),
                    help="which corpus's recorded numbers to re-derive")
     p.set_defaults(func=cmd_verify)
+
+    p = sub.add_parser(
+        "robustness", help="what moves when nothing about the method does"
+    )
+    p.add_argument("--collection", default="novels",
+                   choices=sorted(corpus.COLLECTIONS))
+    p.add_argument("--seed-floor", type=float, default=0.0047)
+    p.set_defaults(func=cmd_robustness)
 
     p = sub.add_parser("demo", help="a guided tour of the results")
     p.set_defaults(func=cmd_demo)

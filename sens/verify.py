@@ -31,7 +31,12 @@ from .pipeline import Config
 # re-derived effect is a difference of two such numbers, so it inherits
 # roughly twice the variance; the tolerance is set accordingly rather than
 # optimistically.
-# Re-measured after the document-split fix, which raised it from 0.0038.
+# The tolerance for *re-derivation* is not the same quantity as the noise
+# floor a *claim* is judged against, and conflating them would be an error.
+# Verification re-runs with every seed fixed, so it reproduces exactly; this
+# margin exists to catch code drift, not sampling. Judging claims uses
+# claims.EFFECT_SD, which is more than twice as wide because it counts the
+# choices verification deliberately holds still.
 HELDOUT_SD = 0.0047
 TOLERANCE = {"spearman": 4 * HELDOUT_SD}
 

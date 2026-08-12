@@ -10,7 +10,7 @@ multiply-add is a Python float operation you could step through in a
 debugger. 560 lines implement the method; the rest is a command line, a
 corpus fetcher, and the measurement apparatus — a benchmark, a held-out
 generalisation test, a control that compares against not compressing at all,
-and an audit of every default. 390 tests. 40 seconds end to end.
+and an audit of every default. 394 tests. 40 seconds end to end.
 
 ```
 $ python -m sens fetch && python -m sens build
@@ -129,21 +129,21 @@ that produced it.
 
 | what was tested | novels | expository | verdict |
 | --- | --- | --- | --- |
-| [PPMI vs raw counts](#is-the-surprise-step-worth-anything) | +0.353 · 75 sd | +0.479 · 102 sd | holds |
-| [PPMI vs log counts](#is-the-surprise-step-worth-anything) | +0.267 · 57 sd | +0.280 · 60 sd | holds |
-| [clipping: PPMI vs PMI](#is-the-surprise-step-worth-anything) | +0.082 · 17 sd | +0.084 · 18 sd | holds |
+| [PPMI vs raw counts](#is-the-surprise-step-worth-anything) | +0.353 · 32 sd | +0.479 · 43 sd | holds |
+| [PPMI vs log counts](#is-the-surprise-step-worth-anything) | +0.267 · 24 sd | +0.280 · 25 sd | holds |
+| [clipping: PPMI vs PMI](#is-the-surprise-step-worth-anything) | +0.082 · 7.4 sd | +0.084 · 7.5 sd | holds |
 | [cosine vs dot product](#is-cosine-the-right-question-to-ask) | +20.2 pts · 26 sd | dot collapses | holds |
 | [cosine vs Euclidean](#is-cosine-the-right-question-to-ask) | +5.7 pts · 7.5 sd | +4.0 pts · p 0.006 | holds |
-| [1/distance vs flat window](#auditing-the-rest-of-the-defaults) | +0.086 · 18 sd | +0.118 · 25 sd | holds |
-| [exponent 1.0 vs 0.5](#being-wrong-about-a-default) | +0.108 · 23 sd | +0.128 · 27 sd | holds |
-| [pruning: min weight 1 vs 0](#auditing-the-rest-of-the-defaults) | +0.053 · 11 sd | +0.083 · 18 sd | holds |
-| [shift 1 vs 2](#auditing-the-rest-of-the-defaults) | +0.043 · 9.1 sd | +0.041 · 8.7 sd | holds |
+| [1/distance vs flat window](#auditing-the-rest-of-the-defaults) | +0.086 · 7.7 sd | +0.118 · 11 sd | holds |
+| [exponent 1.0 vs 0.5](#being-wrong-about-a-default) | +0.108 · 9.8 sd | +0.128 · 12 sd | holds |
+| [pruning: min weight 1 vs 0](#auditing-the-rest-of-the-defaults) | +0.053 · 4.8 sd | +0.083 · 7.5 sd | holds |
+| [shift 1 vs 2](#auditing-the-rest-of-the-defaults) | +0.043 · 3.8 sd | +0.041 · 3.7 sd | holds |
 | [lowercasing vs keeping case](#tokenisation-the-last-stage-and-two-defaults-that-lose) | +0.013 · 3.4 sd, and 15% more vocabulary | +0.014 · 5.3 sd | holds |
 | [magnitude vs sign ranking](#ranking-by-magnitude-earns-its-place-the-negatives-do-not) | +2.4 pts top-1; 0 of 12 random draws matched | 16.9% vs 13.5% random | holds |
-| [smoothing: alpha 1.0 vs 0.75](#auditing-the-rest-of-the-defaults) | +0.004 · 0.9 sd | — | **no effect** |
+| [smoothing: alpha 1.0 vs 0.75](#auditing-the-rest-of-the-defaults) | +0.004 · 0.4 sd | — | **no effect** |
 | [vocabulary 8000 vs 4000](#the-two-that-needed-a-different-ruler) | +0.008 · 2.1 sd | not run | marginal |
-| [window 4 vs 2](#auditing-the-rest-of-the-defaults) | +0.022 · 4.6 sd | not run | single-corpus |
-| [window 4 vs 6](#auditing-the-rest-of-the-defaults) | −0.004 · 0.8 sd | not run | **no effect** |
+| [window 4 vs 2](#auditing-the-rest-of-the-defaults) | +0.022 · 2.0 sd | not run | marginal |
+| [window 4 vs 6](#auditing-the-rest-of-the-defaults) | −0.004 · 0.4 sd | not run | **no effect** |
 | [min\_count 5 vs 20](#the-two-that-needed-a-different-ruler) | 0.002 · 0.5 sd | not run | **no effect** |
 | [3CosMul vs 3CosAdd](#morphological-analogy) | −0.001 · 0.4 sd | not run | **no effect** |
 | [accurate factorisation (Krylov)](#a-better-factorisation-that-made-a-worse-model) | −4.9 pts · 6 sd, 39% faster | +0.4 pts · p 0.87 | **refuted** |
@@ -316,21 +316,49 @@ down those look alike. They are not alike at all, and for most of this
 repository's life nothing here could tell them apart, because no measurement
 had an error bar.
 
-`python -m sens noise` supplies one. The factorisation starts from a random
-block, so the seed changes the answer while changing nothing about the
-method. Six builds, identical but for the seed:
+`python -m sens noise` supplies one, and for most of this repository's life
+it supplied the wrong one. It varies the random block the factorisation
+starts from — six builds, identical but for the seed — and gets sd 0.0047.
+Every `sd` here was quoted against that.
+
+The trouble is that the seed is not the only thing that could have come out
+differently. The held-out measurement rests on a stack of choices nobody
+made deliberately: what order the corpus files are listed in, how big a
+block the split deals, which word pairs the sample draws. The first of those
+was found by accident and was worth *five to six standard deviations* — more
+than the seed. There was no reason to think it was special, so
+`python -m sens robustness` checks the rest:
 
 ```
-held-out   mean   0.6010  sd   0.0038  range 0.5955-0.6053   noise floor 0.0076
-top1       mean     4.1%  sd     0.2%  range   3.7%-4.4%     noise floor   0.5%
-top5       mean    12.5%  sd     0.8%  range  11.0%-13.2%    noise floor   1.6%
-form       mean    21.8%  sd     0.8%  range  20.6%-22.6%    noise floor   1.6%
+axis                   sd    spread   settings
+factorisation      0.0040    0.0080   three seeds
+pair sample        0.0097    0.0275   six samples
+block size         0.0036    0.0068   2000, 4000, 8000
+
+total 0.0111 against a seed-only floor of 0.0047
 ```
 
-This is a lower bound on the real uncertainty, not an estimate of it — the
-corpus, the split and the benchmark questions are all held fixed, so they
-contribute nothing to this spread while contributing plenty in reality. A
-difference this calls noise is definitely noise.
+**The largest source of uncertainty in this repository is which word pairs
+the ruler happens to draw, and it had never been looked at.** It is twice
+the factorisation seed on its own.
+
+The obvious hope is that this cancels in a *difference* — a hard pair sample
+should drag both sides of a comparison down together. Measured on the
+harmonic-window claim across six samples, it does not: the difference has
+sd 0.0109 against the absolute's 0.0097. No cancellation at all.
+
+So the honest floor for an effect is **0.0111, and every sigma in this
+README was overstated by 2.4×**. All of them are now divided by the right
+number. The consequences are real but not fatal:
+
+- `window 4 vs 2` drops from 4.6 sd to 2.0, from solid to marginal.
+- `shift` drops from 9.1 sd to 3.8, `pruning` from 11 to 4.8.
+- The large effects stay large: PPMI over raw counts is 32 sd rather than 75.
+
+Nothing changed status except `window-size`, and no conclusion reversed. But
+for a dozen commits this README was quoting confidence it had not earned,
+and it was doing so because the noise floor measured one of three
+comparable sources and called it *the* noise floor.
 
 Applying it to the claims in this README, which is not a flattering exercise:
 
@@ -1287,7 +1315,8 @@ python -m sens audit                    # every default, fixed ruler (slow)
 python -m sens audit --vocabulary       # ...including vocab_size/min_count
 python -m sens dimensions               # how many dimensions (slow)
 python -m sens subspaces                # do two factorisations agree?
-python -m sens noise                    # the noise floor of every metric
+python -m sens noise                    # spread across factorisation seeds
+python -m sens robustness               # spread across every incidental choice
 python -m sens neighbors whale ship happiness
 python -m sens analogy father mother son
 python -m sens similarity ship boat garden
@@ -1324,7 +1353,7 @@ sens/baseline.py    the uncompressed control, and McNemar's paired test
 sens/audit.py       every default checked against a ruler that cannot move
 sens/corpus.py      which books, and fetching them
 sens/__main__.py    the CLI
-tests/              390 tests
+tests/              394 tests
 ```
 
 ```bash

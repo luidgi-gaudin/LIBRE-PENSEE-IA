@@ -99,6 +99,16 @@ REQUIRED: dict[str, frozenset[str]] = {
 
 STATUSES = tuple(REQUIRED)
 
+# The spread a held-out effect shows when nothing about the method changes —
+# only the factorisation seed, the pair sample and the block size, all of
+# which are choices nobody made deliberately. `sens robustness` measures it.
+#
+# Every sigma below is the effect divided by this. It used to be divided by
+# the factorisation seed alone, at 0.0047, which overstated every claim in
+# the repository by a factor of 2.4. The pair sample turned out to be the
+# largest source and had never been looked at.
+EFFECT_SD = 0.0111
+
 
 @dataclass(frozen=True)
 class ConfigDelta:
@@ -183,7 +193,7 @@ REGISTER: tuple[Claim, ...] = (
         status="holds",
         novels="+0.3531 spearman",
         expository="+0.4787 spearman",
-        sigma=75.0,
+        sigma=31.8,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         note="largest effect measured here; the step the README always "
              "claimed was the important one, finally with a control",
@@ -200,7 +210,7 @@ REGISTER: tuple[Claim, ...] = (
         status="holds",
         novels="+0.2669 spearman",
         expository="+0.2802 spearman",
-        sigma=57.0,
+        sigma=24.0,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         effect=0.2669,
         effect_expository=0.2802,
@@ -226,7 +236,7 @@ REGISTER: tuple[Claim, ...] = (
         status="holds",
         novels="+0.0858 spearman",
         expository="+0.1179 spearman",
-        sigma=18.0,
+        sigma=7.7,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         note="the parameter that had nothing behind it but a sentence of "
              "prose turned out to be among the largest effects",
@@ -242,7 +252,7 @@ REGISTER: tuple[Claim, ...] = (
         status="holds",
         novels="+0.1083 spearman",
         expository="+0.1283 spearman",
-        sigma=23.0,
+        sigma=9.8,
         controls=_c("noise-floor", "second-corpus", "held-out",
                     "unbiased-metric"),
         note="both curves turn over at an interior optimum, which is what "
@@ -259,7 +269,7 @@ REGISTER: tuple[Claim, ...] = (
         status="holds",
         novels="+0.0822 spearman",
         expository="+0.0837 spearman",
-        sigma=17.0,
+        sigma=7.4,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         note="on held-out only; on analogy the two are indistinguishable",
         effect=0.0822,
@@ -274,7 +284,7 @@ REGISTER: tuple[Claim, ...] = (
         status="holds",
         novels="+0.0533 spearman",
         expository="+0.0832 spearman",
-        sigma=11.0,
+        sigma=4.8,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         effect=0.0533,
         effect_expository=0.0832,
@@ -288,7 +298,7 @@ REGISTER: tuple[Claim, ...] = (
         status="holds",
         novels="+0.0426 spearman",
         expository="+0.0408 spearman",
-        sigma=9.1,
+        sigma=3.8,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         effect=0.0426,
         effect_expository=0.0408,
@@ -344,7 +354,7 @@ REGISTER: tuple[Claim, ...] = (
         status="no-effect",
         novels="+0.0042 spearman",
         expository="same direction",
-        sigma=0.9,
+        sigma=0.4,
         controls=_c("noise-floor", "second-corpus", "held-out"),
         note="the default moved to 1.0 on a 2.4 sd result. Re-derived "
              "after the document-split fix it is 0.9 sd — within noise. The "
@@ -368,12 +378,13 @@ REGISTER: tuple[Claim, ...] = (
         id="window-size",
         what="a window of 4 beats a window of 2",
         section="auditing-the-rest-of-the-defaults",
-        status="single-corpus",
+        status="marginal",
         novels="+0.0219 spearman",
-        sigma=4.6,
+        sigma=2.0,
         controls=_c("noise-floor", "held-out"),
-        note="recorded at 2.0 sd, then 4.0, now 4.6. Twice moved by "
-             "`sens verify` catching a stale baseline underneath it",
+        note="recorded at 2.0 sd, then 4.0, then 4.6, now 2.0 again — "
+             "twice moved by a stale baseline, then halved when the noise "
+             "floor stopped counting only the factorisation seed",
         effect=0.0219,
         unit="spearman",
         check=ConfigDelta("window", 2),
@@ -386,7 +397,7 @@ REGISTER: tuple[Claim, ...] = (
         section="auditing-the-rest-of-the-defaults",
         status="no-effect",
         novels="-0.0039 spearman",
-        sigma=0.8,
+        sigma=0.4,
         controls=_c("noise-floor", "held-out"),
         note="anything between 4 and 6 is the same, and which of them is "
              "nominally ahead flips with the baseline — it flipped when the "

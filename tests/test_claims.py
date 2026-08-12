@@ -210,3 +210,52 @@ class TestVerifiability(unittest.TestCase):
         for claim in REGISTER:
             if claim.effect is not None:
                 self.assertIn(claim.unit, TOLERANCE, claim.id)
+
+
+class TestNoiseFloorDiscipline(unittest.TestCase):
+    """The floor a claim is judged against must be the honest one."""
+
+    def test_the_effect_floor_counts_more_than_the_seed(self):
+        # It used to be the factorisation seed alone, at 0.0047, which
+        # overstated every claim by 2.4x. The pair sample turned out to be
+        # the largest source and had never been looked at.
+        from sens.claims import EFFECT_SD
+        from sens.verify import HELDOUT_SD
+
+        self.assertGreater(EFFECT_SD, HELDOUT_SD)
+
+    def test_verification_tolerance_is_a_different_quantity(self):
+        # Verification holds every seed fixed and reproduces exactly, so its
+        # margin exists to catch code drift. Judging a claim must not borrow
+        # it, because it excludes the choices that actually vary.
+        from sens.claims import EFFECT_SD
+        from sens.verify import TOLERANCE
+
+        self.assertNotAlmostEqual(TOLERANCE["spearman"], EFFECT_SD, places=4)
+
+    def test_every_sigma_matches_its_effect_and_the_floor(self):
+        from sens.claims import EFFECT_SD
+
+        for claim in REGISTER:
+            if claim.effect is None or claim.sigma is None:
+                continue
+            if claim.unit != "spearman":
+                continue
+            expected = abs(claim.effect) / EFFECT_SD
+            self.assertAlmostEqual(
+                claim.sigma, expected, delta=0.15,
+                msg=f"{claim.id}: sigma {claim.sigma} but "
+                    f"{claim.effect}/{EFFECT_SD} = {expected:.2f}",
+            )
+
+    def test_statuses_agree_with_their_sigmas(self):
+        # Three standard deviations is where this repository draws `holds`.
+        # An effect below it that still says `holds` is the exact mistake
+        # the noise floor exists to prevent.
+        for claim in REGISTER:
+            if claim.sigma is None or claim.unit != "spearman":
+                continue
+            if claim.status == "holds":
+                self.assertGreaterEqual(claim.sigma, 3.0, claim.id)
+            if claim.status == "no-effect":
+                self.assertLess(claim.sigma, 2.0, claim.id)
